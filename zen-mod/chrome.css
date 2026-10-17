@@ -1,0 +1,9 @@
+/* Tabs in the terminal folder (marked by mywebterm.uc.mjs): show the close
+   button instead of Zen's unload button for pinned tabs. */
+#tabbrowser-tabs .tabbrowser-tab[mywebterm-in-folder] .tab-reset-button {
+  display: none !important;
+}
+
+#tabbrowser-tabs .tabbrowser-tab[mywebterm-in-folder] .tab-close-button {
+  display: block !important;
+}

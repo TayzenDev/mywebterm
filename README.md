@@ -243,9 +243,11 @@ automatic folder creation, leaving the folder when the tab leaves the terminal, 
 addresses, shortcut, address to open and reuse of the current directory. The shortcut is one or
 more modifiers, then a letter or digit, joined with `+`: `Cmd`, `Ctrl`, `Alt` (Option on Mac),
 `Shift`, e.g. `Cmd+Shift+T` (default `Alt+Shift+T`). It takes precedence over Zen's own shortcut on
-the same keys. A tab you take out of the folder yourself isn't put back. Zen pins the
-tabs in a folder, and by default `Cmd+W` unloads a pinned tab instead of closing it: to really
-close a terminal, set `zen.pinned-tab-manager.close-shortcut-behavior` to `close`.
+the same keys. A tab you take out of the folder yourself isn't put back.
+
+Zen pins the tabs in a folder, and normally unloads a pinned tab before it can be closed. The mod
+skips that step for tabs in the terminal folder: they show a close button, and the close button,
+`Cmd+W` and middle click close them right away. Other pinned tabs keep Zen's behavior.
 
 **Publishing an update**: edit `zen-mod/`, bump `version` and set `updatedAt` in `theme.json` to
 the current date and time, then push to GitHub. Sine copies the whole repository into the mod

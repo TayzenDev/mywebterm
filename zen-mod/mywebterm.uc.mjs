@@ -1,6 +1,6 @@
 // mywebterm for Zen: moves each terminal tab into the "Terminal" folder of its
-// space and opens a terminal from the keyboard. Sine loads this module in
-// every browser window (see theme.json).
+// space, closes those tabs in one step and opens a terminal from the keyboard.
+// Sine loads this module in every browser window (see theme.json).
 
 const PREFS = {
   // host[:port] as it appears in the URL, comma-separated;
@@ -56,6 +56,43 @@ function spaceFolder(tab) {
   );
   if (folder || !pref('createFolder')) return folder;
   return gZenFolders.createFolder([], { workspaceId: space, label });
+}
+
+// Zen unloads a pinned tab before it can be closed, and every tab in a folder
+// is pinned. Tabs in the terminal folder close in one step instead; this
+// attribute lets chrome.css show their close button.
+const IN_FOLDER = 'mywebterm-in-folder';
+
+function inTerminalFolder(tab) {
+  return Boolean(tab?.group?.isZenFolder && tab.group.label === pref('folderName'));
+}
+
+function markTab(tab) {
+  tab.toggleAttribute(IN_FOLDER, inTerminalFolder(tab));
+}
+
+// TabGrouped / TabUngrouped carry the tab in event.detail
+function onGroupChange(event) {
+  markTab(event.detail);
+}
+
+// Middle click on a pinned tab goes through Zen's onCloseTabShortcut, replaced
+// in init()
+let zenCloseTabShortcut;
+function closeTabShortcut(event, selectedTab = gBrowser.selectedTab, options = {}) {
+  if ([selectedTab].flat().every(inTerminalFolder)) options = { ...options, behavior: 'close' };
+  return zenCloseTabShortcut.call(this, event, selectedTab, options);
+}
+
+// Cmd+W: Zen listens to cmd_close with a copy of onCloseTabShortcut bound at
+// startup, which the override above doesn't reach. Close terminal tabs first.
+function onCommand(event) {
+  if (event.target.id !== 'cmd_close') return;
+  const tabs = gBrowser.selectedTab.multiselected ? gBrowser.selectedTabs : [gBrowser.selectedTab];
+  if (!tabs.every(inTerminalFolder)) return;
+  event.stopImmediatePropagation();
+  event.preventDefault();
+  gBrowser.removeTabs(tabs, { animate: true });
 }
 
 function onLocation(tab) {
@@ -131,6 +168,8 @@ const PREF_BRANCH = 'mywebterm.';
 function readPrefs() {
   readHosts();
   readShortcut();
+  // The folder name may have changed
+  for (const tab of gZenWorkspaces.allStoredTabs) markTab(tab);
 }
 
 async function init() {
@@ -143,6 +182,11 @@ async function init() {
   for (const tab of gZenWorkspaces.allStoredTabs) onLocation(tab);
   // In the capture phase, before Zen's and the page's shortcuts
   window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('command', onCommand, true);
+  window.addEventListener('TabGrouped', onGroupChange);
+  window.addEventListener('TabUngrouped', onGroupChange);
+  zenCloseTabShortcut = gZenPinnedTabManager.onCloseTabShortcut;
+  gZenPinnedTabManager.onCloseTabShortcut = closeTabShortcut;
 }
 
 // Mod disabled in Sine, without a restart (supportsUnload)
@@ -150,6 +194,11 @@ window.addUnloadListener?.(() => {
   gBrowser.removeTabsProgressListener(progressListener);
   Services.prefs.removeObserver(PREF_BRANCH, readPrefs);
   window.removeEventListener('keydown', onKeyDown, true);
+  window.removeEventListener('command', onCommand, true);
+  window.removeEventListener('TabGrouped', onGroupChange);
+  window.removeEventListener('TabUngrouped', onGroupChange);
+  if (zenCloseTabShortcut) gZenPinnedTabManager.onCloseTabShortcut = zenCloseTabShortcut;
+  for (const tab of gZenWorkspaces.allStoredTabs) tab.removeAttribute(IN_FOLDER);
 });
 
 init().catch((err) => console.error('[mywebterm]', err));
