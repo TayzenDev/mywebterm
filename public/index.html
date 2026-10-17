@@ -593,9 +593,10 @@
 
       // --- Sequences sent by the shell ---------------------------------------
       // - ESC ] 6767 ; title ; <name> BEL: `title` command (bin/title)
-      // - ESC ] 6767 ; command ; <line> BEL: command started (shell-integration/zsh)
-      // - ESC ] 6767 ; resume ; <line> BEL: command that resumes the running AI
-      //   agent's session (shell-integration/zsh)
+      // - ESC ] 6767 ; command ; <secret> ; <line> BEL: command started
+      //   (shell-integration/zsh)
+      // - ESC ] 6767 ; resume ; <secret> ; <line> BEL: command that resumes the
+      //   running AI agent's session (shell-integration/zsh)
       // - ESC ] 6767 ; prompt BEL: back at the prompt, the command has finished
       // - ESC ] 7 ; file://<host><path> BEL: current directory, sent at every
       //   prompt by shell-integration/zsh
@@ -604,7 +605,8 @@
       // They are stripped from the stream before it goes to the terminal.
       const HANDLERS = {
         '\x1b]6767;': (payload) => {
-          const [cmd, ...args] = payload.split(';');
+          let [cmd, ...args] = payload.split(';');
+          if ((cmd === 'command' || cmd === 'resume') && args.shift() !== shellSecret) return;
           if (cmd === 'title') setManualTitle(args.join(';'));
           if (cmd === 'command') {
             const commandLine = args.join(';');
@@ -676,6 +678,14 @@
         },
       };
       let pending = '';
+
+      // Secret given to this tab's shell (see shell-integration/zsh/.zshenv):
+      // command and resume put a command in the URL, which a reload runs, so
+      // they are ignored without it. Any program can print these sequences
+      // (a file shown by cat, an ssh server, logs); only our zsh hooks know
+      // the secret. The other sequences change at most a title, a
+      // notification or the directory, and stay open to every program.
+      const shellSecret = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
 
       // Programs recognized while they run (until the prompt comes back).
       // title: what the tab shows, ahead of titles sent by the program
@@ -943,6 +953,7 @@
         if (document.documentElement.dataset.launch === 'run') params.set('run', '1');
       }
       params.set('token', token || '');
+      params.set('secret', shellSecret);
       const ws = new WebSocket(`${proto}://${location.host}/pty?${params}`);
 
       function askForToken(message) {

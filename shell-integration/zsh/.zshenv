@@ -3,6 +3,14 @@
 # current directory (OSC 7 sequence, as in Ghostty) and the running command
 # (private 6767 sequence).
 
+# Secret chosen by the page for this shell. The command and resume sequences
+# carry it: the page ignores those without it, so output from a program (a
+# file shown by cat, an ssh server, logs) can't make it put a command in the
+# URL, where a reload would run it. Kept in a shell variable and removed from
+# the environment, so programs started from here never see it.
+typeset -g _mywebterm_secret=$MYWEBTERM_SECRET
+unset MYWEBTERM_SECRET
+
 if [[ -n "${MYWEBTERM_ZDOTDIR+x}" ]]; then
   ZDOTDIR="$MYWEBTERM_ZDOTDIR"
   unset MYWEBTERM_ZDOTDIR
@@ -20,7 +28,7 @@ _mywebterm_report_prompt() {
 # 80 characters). Truncated, on a single line.
 _mywebterm_report_command() {
   local command_line=${3//[[:cntrl:]]/ }
-  printf '\e]6767;command;%s\a' "${command_line[1,200]}"
+  printf '\e]6767;command;%s;%s\a' "$_mywebterm_secret" "${command_line[1,200]}"
 }
 
 autoload -Uz add-zsh-hook
@@ -59,7 +67,7 @@ fi
 # A function with the same name in your .zshrc replaces these.
 
 _mywebterm_report_resume() {
-  printf '\e]6767;resume;%s\a' "$1"
+  printf '\e]6767;resume;%s;%s\a' "$_mywebterm_secret" "$1"
 }
 
 _mywebterm_uuid() {

@@ -173,13 +173,16 @@ async function servePage(req, res) {
 // user's config, then reports the current directory at each prompt.
 // The .zshenv also puts the startup command in the input line of the first
 // prompt (and submits it if run).
+// secret: chosen by the page, it authenticates the sequences that announce
+// the running command (see the .zshenv), which program output can't forge.
 const IS_ZSH = SHELL.endsWith('/zsh');
 // Environment passed to shells, without the version of the terminal that
 // started the server (TERM_PROGRAM is replaced)
 const { TERM_PROGRAM_VERSION: _, ...PARENT_ENV } = process.env;
-function shellIntegrationEnv(command, run) {
+function shellIntegrationEnv(command, run, secret) {
   if (!IS_ZSH) return {};
   const env = { ZDOTDIR: ZSH_INTEGRATION_DIR };
+  if (secret) env.MYWEBTERM_SECRET = secret;
   if (process.env.ZDOTDIR !== undefined) env.MYWEBTERM_ZDOTDIR = process.env.ZDOTDIR;
   if (command) {
     env.MYWEBTERM_COMMAND = command;
@@ -292,6 +295,7 @@ wss.on('connection', (ws, req) => {
   // Startup command (the page's ?command=), on a single line
   const command = (url.searchParams.get('command') || '').replace(/[\x00-\x1f\x7f]/g, ' ').trim();
   const run = url.searchParams.get('run') === '1';
+  const secret = url.searchParams.get('secret');
   if (!cwd) {
     ws.send(`\x1b[33mDirectory not found: ${wanted} — opening in home.\x1b[0m\r\n`);
   }
@@ -316,7 +320,7 @@ wss.on('connection', (ws, req) => {
         MYWEBTERM: '1',
         // Makes the `title` and `notify` commands available
         PATH: `${BIN_DIR}:${process.env.PATH}`,
-        ...shellIntegrationEnv(command, run),
+        ...shellIntegrationEnv(command, run, /^[0-9a-f]{32}$/.test(secret) ? secret : ''),
       },
     });
   } catch (err) {

@@ -326,6 +326,12 @@ This server gives full shell access to the machine.
 - Commands in the URL only run on their own when signed with the token (see
   [Run a command](#run-a-command)): otherwise a link from Slack or an email would run any command.
   `MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1` turns this off; so does `MYWEBTERM_UNSAFE_NO_TOKEN=1`.
+- Any program can print the sequences the page reads, so a file shown by `cat`, an ssh server or
+  logs could announce a fake running command, which the page would sign into `?c=` and a reload
+  would run. The zsh hooks therefore carry a secret chosen by the page for each tab, passed to the
+  shell and removed from its environment so that programs never see it: command and resume
+  sequences without it are ignored. Titles, notifications and the directory stay open to every
+  program; they don't run anything.
 - Pasted text goes through bracketed paste when the program asks for it (zsh does), with the
   markers removed from the text: a line break copied from a web page doesn't run anything on its
   own.
