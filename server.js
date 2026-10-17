@@ -96,6 +96,14 @@ function pageConfig() {
 // /fonts/<id>, program favicons under /icons/<slug>.svg. Any other path is a
 // directory to open: serve the page.
 async function serveStatic(req, res) {
+  // Same rule as the WebSocket (see isLocalName): through DNS rebinding, a
+  // site could otherwise read /config.json (your home, so your user name)
+  // and the font list
+  if (!isLocalName(req.headers.host)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Unknown host name: add it to ALLOWED_HOSTS.\n');
+    return;
+  }
   const url = new URL(req.url, 'http://localhost');
   let file;
   if (url.pathname.startsWith('/ghostty-web/')) {

@@ -333,8 +333,9 @@ This server gives full shell access to the machine.
   the terminal in an invisible iframe and make you type into it.
 - WebSocket connections from another origin are rejected. Without this check, any site open in the
   browser could drive the terminal.
-- They must also target a local name (`localhost`, `*.localhost`, 127.0.0.1 or `ALLOWED_HOSTS`):
-  this blocks DNS rebinding, where a site points its own domain at 127.0.0.1.
+- Every request, page and WebSocket, must also target a local name (`localhost`, `*.localhost`,
+  127.0.0.1 or `ALLOWED_HOSTS`), otherwise it gets a 403: this blocks DNS rebinding, where a site
+  points its own domain at 127.0.0.1 to read `/config.json` or drive the terminal.
 
 ## Acknowledgements
 
