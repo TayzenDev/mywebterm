@@ -6,7 +6,7 @@ Inspired by [tweety](https://github.com/pomdtr/tweety).
 ```bash
 npm install
 npm start
-# → http://127.0.0.1:8080/#token=…
+# → http://term.localhost:8080/#token=…
 ```
 
 Each tab runs its own shell (`$SHELL -l`).
@@ -15,6 +15,26 @@ The first start creates an access token in `~/.config/mywebterm/token` (readable
 prints the address with it. Open that address once: the page keeps the token for that address
 (`127.0.0.1:8080`, `localhost:8080` and `term.localhost` each need it once) and removes it from the
 URL. Without it, the page asks for it. Delete the file and restart the server to change the token.
+
+The printed address uses `MYWEBTERM_DOMAIN` (`term.localhost` by default), without the port when
+[`scripts/port80.sh`](#address-termlocalhost) relays port 80 to the server. Set it to the name you
+use, so the token lands in the right address's storage. `npm start -- --open` also opens it in
+the default browser, unless a page there already used the token.
+
+## Start at login
+
+```bash
+scripts/autostart.sh install     # no sudo
+scripts/autostart.sh uninstall
+```
+
+Installs a LaunchAgent: the server starts when you log in, restarts if it stops, and logs to
+`~/Library/Logs/mywebterm.log`. It runs with `--open`, so at the first login the default browser
+opens the address with the token; afterwards it opens nothing, until the token changes. `PORT`,
+`MYWEBTERM_DOMAIN`, `MYWEBTERM_HOST` and `ALLOWED_HOSTS` set when installing are kept
+(`MYWEBTERM_DOMAIN=webterm.localhost scripts/autostart.sh install`). The agent uses the `node`
+found at install time: run `install` again after changing Node version (nvm…). Stop a server
+started by hand first, or the agent's can't take the port.
 
 ## Open in a directory
 
@@ -308,6 +328,7 @@ browser (ghostty-web)  ⇄  WebSocket /pty  ⇄  server.js (node-pty)  ⇄  zsh
 | `MYWEBTERM_HOST`                     | `127.0.0.1` | Listening interface (not `HOST`: zsh uses that name for the machine's name)     |
 | `SHELL`                              | `$SHELL`    | Shell to start                                                                  |
 | `ALLOWED_HOSTS`                      |             | Comma-separated names accepted besides `localhost`, `*.localhost` and 127.0.0.1 |
+| `MYWEBTERM_DOMAIN`                   | `term.localhost` | Name in the printed and opened address; accepted like `ALLOWED_HOSTS`      |
 | `MYWEBTERM_UNSAFE_NO_TOKEN`          |             | `1`: no access token (see Security). Refused unless listening on the loopback   |
 | `MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS` |             | `1`: commands in the URL run without a signature (see Run a command)            |
 

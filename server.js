@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,10 @@ import { iconSvg } from './icons.js';
 // hostname, which would expose the server on the network if it were exported
 const HOST = process.env.MYWEBTERM_HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT) || 8080;
+// Name of the address printed (and opened by --open) at startup. *.localhost
+// names reach this machine with no setup; another name must resolve to it,
+// and is then accepted like ALLOWED_HOSTS.
+const DOMAIN = (process.env.MYWEBTERM_DOMAIN || 'term.localhost').toLowerCase();
 const SHELL = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +49,9 @@ if (existsSync(spawnHelper)) chmodSync(spawnHelper, 0o755);
 // localStorage, which is per origin and port and partitioned in iframes.
 const CONFIG_DIR = join(process.env.XDG_CONFIG_HOME || join(os.homedir(), '.config'), 'mywebterm');
 const TOKEN_FILE = join(CONFIG_DIR, 'token');
+// Addresses where a page has already used the token (one host per line), so
+// --open doesn't open the browser at every start for nothing
+const TOKEN_HOSTS_FILE = join(CONFIG_DIR, 'token-hosts');
 function loadToken() {
   try {
     const token = readFileSync(TOKEN_FILE, 'utf8').trim();
@@ -54,6 +62,7 @@ function loadToken() {
   const token = randomBytes(32).toString('hex');
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   writeFileSync(TOKEN_FILE, `${token}\n`, { mode: 0o600 });
+  rmSync(TOKEN_HOSTS_FILE, { force: true }); // pages kept the old token
   return token;
 }
 // MYWEBTERM_UNSAFE_NO_TOKEN=1: no token, only the Origin and Host checks.
@@ -229,7 +238,7 @@ const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '').split(',').map((h) => h.
 function isLocalName(host = '') {
   const name = host.toLowerCase().replace(/:\d+$/, '');
   return name === 'localhost' || name.endsWith('.localhost')
-    || name === '127.0.0.1' || name === '[::1]' || ALLOWED_HOSTS.includes(name);
+    || name === '127.0.0.1' || name === '[::1]' || name === DOMAIN || ALLOWED_HOSTS.includes(name);
 }
 
 // Image pasted into the page (the pty only carries text): saved to a temp
@@ -281,6 +290,7 @@ wss.on('connection', (ws, req) => {
     ws.close(CLOSE_BAD_TOKEN, 'invalid token');
     return;
   }
+  rememberTokenHost(req.headers.host);
   const cols = cells(url.searchParams.get('cols'), 80);
   const rows = cells(url.searchParams.get('rows'), 24);
   // No control characters: the path is echoed back in the terminal
@@ -366,12 +376,55 @@ wss.on('connection', (ws, req) => {
   });
 });
 
+function tokenHosts() {
+  try {
+    return readFileSync(TOKEN_HOSTS_FILE, 'utf8').split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function rememberTokenHost(host = '') {
+  host = host.toLowerCase();
+  if (NO_TOKEN || !host || tokenHosts().includes(host)) return;
+  try {
+    appendFileSync(TOKEN_HOSTS_FILE, `${host}\n`, { mode: 0o600 });
+  } catch (err) {
+    console.warn(`Could not write ${TOKEN_HOSTS_FILE} (${err.code})`);
+  }
+}
+
+// Port that scripts/port80.sh relays port 80 to, if installed
+function port80Target() {
+  try {
+    const plist = readFileSync('/Library/LaunchDaemons/local.mywebterm.port80.plist', 'utf8');
+    return Number(plist.match(/<string>127\.0\.0\.1<\/string><string>(\d+)<\/string>/)?.[1]);
+  } catch {
+    return null;
+  }
+}
+
+// DOMAIN resolves to the loopback: only usable when listening there
+const LOOPBACK = ['127.0.0.1', '::1', 'localhost', '0.0.0.0', '::'].includes(HOST);
+const ADDRESS = LOOPBACK
+  ? `http://${DOMAIN}${port80Target() === PORT ? '' : `:${PORT}`}`
+  : `http://${HOST.includes(':') ? `[${HOST}]` : HOST}:${PORT}`;
+
+// --open (used at login, see scripts/autostart.sh): open the address with the
+// token in the default browser, unless a page there already has it
+function openInBrowser() {
+  if (NO_TOKEN || tokenHosts().includes(new URL(ADDRESS).host)) return;
+  const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
+  execFile(opener, [`${ADDRESS}/#token=${TOKEN}`], (err) => {
+    if (err) console.warn(`Could not open the browser (${err.message})`);
+  });
+}
+
 server.listen(PORT, HOST, () => {
-  const address = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
-  console.log(`Terminal available at ${address}${NO_TOKEN ? '' : `/#token=${TOKEN}`}`);
+  console.log(`Terminal available at ${ADDRESS}${NO_TOKEN ? '' : `/#token=${TOKEN}`}`);
   if (NO_TOKEN) console.warn('UNSAFE: no token (MYWEBTERM_UNSAFE_NO_TOKEN=1), any local process can open a shell.');
   else console.log(`(token in ${TOKEN_FILE}, asked once per address)`);
   if (!SIGNED_COMMANDS) console.warn('UNSAFE: commands in the URL are not signed, links from other apps run them.');
+  if (process.argv.includes('--open')) openInBrowser();
 });
 
 // Browsers also resolve localhost and *.localhost (term.localhost) to ::1,
