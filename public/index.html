@@ -628,6 +628,13 @@
           if (ws.readyState === WebSocket.OPEN) ws.send('\x16');
           return true;
         }
+        // ghostty-web drops Shift on Tab and Enter (both send the bare key). Shift+Tab
+        // is back-tab (CSI Z: Claude Code's mode switch, reverse completion);
+        // Shift+Enter sends ESC CR like iTerm2 after /terminal-setup (newline in Claude Code).
+        if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && (e.code === 'Tab' || e.code === 'Enter')) {
+          if (ws.readyState === WebSocket.OPEN) ws.send(e.code === 'Tab' ? '\x1b[Z' : '\x1b\r');
+          return true;
+        }
         return false;
       });
 
