@@ -292,8 +292,9 @@
       function renderTitle() {
         const program = runningProgram && (runningProgram.ownTitle || runningProgram.label);
         const title = manualTitle || program || autoTitle;
-        // "●": notification not seen yet (see Notifications)
-        document.title = unread ? `● ${title}` : title;
+        // "🔴": notification not seen yet (see Notifications). An emoji: a tab
+        // title is plain text, it can't be colored
+        document.title = unread ? `🔴 ${title}` : title;
         titleEl.textContent = title;
         renderFavicon(runningProgram?.icon);
       }
@@ -362,7 +363,7 @@
       // Sent by OSC 9, 777 and 99 sequences (AI agents, `notify` command,
       // bin/claude-notify-hook). Only when the tab isn't being looked at
       // (hidden tab or window in the background): browser notification, plus
-      // "●" before the title and a badge on the favicon until the tab is
+      // "🔴" before the title and a badge on the favicon until the tab is
       // revisited, even without permission.
       const notifyBtn = document.getElementById('notify-btn');
       // One notification at a time per tab: the next one replaces the previous

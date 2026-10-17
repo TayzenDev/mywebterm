@@ -132,7 +132,7 @@ it** (tab in the background, or browser window behind another application):
 - a browser notification, which brings you back to the tab when clicked. You need to allow it once
   with the "🔔 Enable notifications" button in the top right corner (shown until you accept or
   decline). One notification per tab: the next one replaces the previous one;
-- a "●" before the tab title and a dot on the favicon, even without the permission. They go away
+- a "🔴" before the tab title and a dot on the favicon, even without the permission. They go away
   when you come back to the tab, and the notification closes.
 
 The page handles terminal notification sequences: OSC 9 (iTerm2), OSC 777 (rxvt, Ghostty) and

@@ -4,11 +4,12 @@
 # (MYWEBTERM variable set by the server), so it can be declared in
 # ~/.claude/settings.json for all terminals.
 #
-# Claude Code reads hooks' standard output: write to /dev/tty, the session's
-# terminal, and nothing to stdout.
+# Claude Code reads hooks' standard output: write to the session's terminal,
+# and nothing to stdout.
 import json
 import os
 import re
+import subprocess
 import sys
 
 if not os.environ.get("MYWEBTERM"):
@@ -63,8 +64,36 @@ seq = f"\x1b]777;notify;{clean(title).replace(';', ',')};{clean(body or '')}\x07
 if os.environ.get("TMUX"):
     seq = "\x1bPtmux;" + seq.replace("\x1b", "\x1b\x1b") + "\x1b\\"
 
-try:
-    with open("/dev/tty", "w") as tty:
-        tty.write(seq)
-except OSError:
-    pass
+
+# Claude Code runs hooks in a new session, without a controlling terminal:
+# /dev/tty can't be opened. Write to the terminal of the closest ancestor that
+# has one (Claude Code itself).
+def terminal():
+    pid = os.getppid()
+    for _ in range(10):
+        if pid <= 1:
+            return None
+        try:
+            out = subprocess.run(
+                ["ps", "-o", "ppid=,tty=", "-p", str(pid)], capture_output=True, text=True, timeout=2
+            ).stdout.split()
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if len(out) < 2:
+            return None
+        ppid, tty = out
+        if tty not in ("?", "??"):
+            return "/dev/" + tty if tty.startswith("tty") else "/dev/tty" + tty
+        pid = int(ppid)
+    return None
+
+
+for path in ("/dev/tty", terminal()):
+    if not path:
+        continue
+    try:
+        with open(path, "w") as tty:
+            tty.write(seq)
+        break
+    except OSError:
+        pass
