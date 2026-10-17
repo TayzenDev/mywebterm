@@ -6,10 +6,15 @@ Inspired by [tweety](https://github.com/pomdtr/tweety).
 ```bash
 npm install
 npm start
-# → http://127.0.0.1:8080
+# → http://127.0.0.1:8080/#token=…
 ```
 
 Each tab runs its own shell (`$SHELL -l`).
+
+The first start creates an access token in `~/.config/mywebterm/token` (readable by you only) and
+prints the address with it. Open that address once: the page keeps the token for that address
+(`127.0.0.1:8080`, `localhost:8080` and `term.localhost` each need it once) and removes it from the
+URL. Without it, the page asks for it. Delete the file and restart the server to change the token.
 
 ## Open in a directory
 
@@ -282,19 +287,28 @@ browser (ghostty-web)  ⇄  WebSocket /pty  ⇄  server.js (node-pty)  ⇄  zsh
 
 ## Configuration
 
-| Variable        | Default     | Purpose                                                                     |
-| --------------- | ----------- | --------------------------------------------------------------------------- |
-| `PORT`          | `8080`      | HTTP port                                                                   |
-| `HOST`          | `127.0.0.1` | Listening interface                                                         |
-| `SHELL`         | `$SHELL`    | Shell to start                                                              |
-| `ALLOWED_HOSTS` |             | Comma-separated names accepted besides `localhost`, `*.localhost` and 127.0.0.1 |
+| Variable                    | Default     | Purpose                                                                         |
+| --------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| `PORT`                      | `8080`      | HTTP port                                                                       |
+| `MYWEBTERM_HOST`            | `127.0.0.1` | Listening interface (not `HOST`: zsh uses that name for the machine's name)     |
+| `SHELL`                     | `$SHELL`    | Shell to start                                                                  |
+| `ALLOWED_HOSTS`             |             | Comma-separated names accepted besides `localhost`, `*.localhost` and 127.0.0.1 |
+| `MYWEBTERM_UNSAFE_NO_TOKEN` |             | `1`: no access token (see Security). Refused unless listening on the loopback   |
 
 ## Security
 
 This server gives full shell access to the machine.
 
-- By default it only listens on `127.0.0.1`. Don't switch to `HOST=0.0.0.0` without adding
-  authentication: anyone on your network would get a shell on your machine.
+- By default it only listens on `127.0.0.1`. Don't switch to `MYWEBTERM_HOST=0.0.0.0`: the token
+  would then travel in clear over the network, and a leaked token gives a shell on your machine.
+- The WebSocket requires the token from `~/.config/mywebterm/token`. The checks below only stop
+  browsers: any other local process (another user, a Docker container reaching the host, a
+  sandboxed app) can forge the headers, but can't read the token. The page keeps it in
+  `localStorage`, which is per origin and port: other servers on localhost don't see it.
+- `MYWEBTERM_UNSAFE_NO_TOKEN=1` turns the token off: no address to open first, but any local
+  process can then open a shell as you. The Origin, Host and frame checks still apply to browsers.
+- The page refuses to be shown in a frame (`frame-ancestors 'none'`): otherwise a site could load
+  the terminal in an invisible iframe and make you type into it.
 - WebSocket connections from another origin are rejected. Without this check, any site open in the
   browser could drive the terminal.
 - They must also target a local name (`localhost`, `*.localhost`, 127.0.0.1 or `ALLOWED_HOSTS`):

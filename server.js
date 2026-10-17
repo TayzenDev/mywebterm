@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { chmodSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,9 @@ import { loadGhosttyConfig } from './ghostty-config.js';
 import { findFontFaces, fontFilePath } from './fonts.js';
 import { iconSvg } from './icons.js';
 
-const HOST = process.env.HOST || '127.0.0.1';
+// Not HOST: zsh and other environments use that name for the machine's
+// hostname, which would expose the server on the network if it were exported
+const HOST = process.env.MYWEBTERM_HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT) || 8080;
 const SHELL = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : '/bin/zsh');
 
@@ -33,6 +36,40 @@ const spawnHelper = join(
   'spawn-helper',
 );
 if (existsSync(spawnHelper)) chmodSync(spawnHelper, 0o755);
+
+// Secret required by /pty, created on first start, readable by you only. The
+// Origin check below only stops browsers: any local process (another user, a
+// container, a sandboxed app) can forge the headers, not guess the token.
+// The page gets it once per address from #token=… and keeps it in
+// localStorage, which is per origin and port and partitioned in iframes.
+const CONFIG_DIR = join(process.env.XDG_CONFIG_HOME || join(os.homedir(), '.config'), 'mywebterm');
+const TOKEN_FILE = join(CONFIG_DIR, 'token');
+function loadToken() {
+  try {
+    const token = readFileSync(TOKEN_FILE, 'utf8').trim();
+    if (token) return token;
+  } catch {
+    // first start: create it
+  }
+  const token = randomBytes(32).toString('hex');
+  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  writeFileSync(TOKEN_FILE, `${token}\n`, { mode: 0o600 });
+  return token;
+}
+// MYWEBTERM_UNSAFE_NO_TOKEN=1: no token, only the Origin and Host checks.
+// Any local process can then open a shell. Only allowed on the loopback.
+const NO_TOKEN = process.env.MYWEBTERM_UNSAFE_NO_TOKEN === '1';
+if (NO_TOKEN && !['127.0.0.1', '::1', 'localhost'].includes(HOST)) {
+  console.error(`MYWEBTERM_UNSAFE_NO_TOKEN refused with MYWEBTERM_HOST=${HOST}: anyone on the network would get a shell.`);
+  process.exit(1);
+}
+const TOKEN = NO_TOKEN ? null : Buffer.from(loadToken());
+
+function validToken(value) {
+  if (NO_TOKEN) return true;
+  const given = Buffer.from(value || '');
+  return given.length === TOKEN.length && timingSafeEqual(given, TOKEN);
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -105,7 +142,14 @@ async function servePage(req, res) {
   const launch = site === 'none' || site === 'same-origin' ? 'run' : 'type';
   try {
     const html = await readFile(join(PUBLIC_DIR, 'index.html'), 'utf8');
-    res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
+    res.writeHead(200, {
+      'Content-Type': MIME['.html'],
+      'Cache-Control': 'no-store',
+      // Never inside a frame: a site could load the terminal in an invisible
+      // iframe and make you type into it (clickjacking)
+      'Content-Security-Policy': "frame-ancestors 'none'",
+      'X-Frame-Options': 'DENY',
+    });
     res.end(html.replace('<html', `<html data-launch="${launch}"`));
   } catch {
     res.writeHead(404).end('Not found');
@@ -187,8 +231,15 @@ function pasteImage(shell, { mime, data, bracketed }) {
   shell.write(bracketed ? `\x1b[200~${file}\x1b[201~` : file);
 }
 
+// Close code for a missing or wrong token: the page then asks for it again
+const CLOSE_BAD_TOKEN = 4401;
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost');
+  if (!validToken(url.searchParams.get('token'))) {
+    ws.close(CLOSE_BAD_TOKEN, 'invalid token');
+    return;
+  }
   const cols = Number(url.searchParams.get('cols')) || 80;
   const rows = Number(url.searchParams.get('rows')) || 24;
   // No control characters: the path is echoed back in the terminal
@@ -258,7 +309,14 @@ wss.on('connection', (ws, req) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Terminal available at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  const address = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
+  if (NO_TOKEN) {
+    console.log(`Terminal available at ${address}`);
+    console.warn('UNSAFE: no token (MYWEBTERM_UNSAFE_NO_TOKEN=1), any local process can open a shell.');
+    return;
+  }
+  console.log(`Terminal available at ${address}/#token=${TOKEN}`);
+  console.log(`(token in ${TOKEN_FILE}, asked once per address)`);
 });
 
 // Browsers also resolve localhost and *.localhost (term.localhost) to ::1,

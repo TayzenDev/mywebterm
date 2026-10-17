@@ -105,6 +105,27 @@
       const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
       titleEl.title = `Rename (${isMac ? 'Cmd' : 'Ctrl'}+Shift+R)`;
 
+      // --- Token -------------------------------------------------------------
+      // Required by the server (see server.js). Given once per address as
+      // #token=…, then kept in localStorage; removed from the address right
+      // away so it doesn't end up in a bookmark or a shared link.
+      const TOKEN_KEY = 'mywebterm-token';
+      const hashToken = new URLSearchParams(location.hash.slice(1)).get('token');
+      if (hashToken) {
+        try {
+          localStorage.setItem(TOKEN_KEY, hashToken);
+        } catch {
+          // storage blocked: the token only lasts for this page
+        }
+        history.replaceState(null, '', location.pathname + location.search);
+      }
+      let token = hashToken;
+      try {
+        token ||= localStorage.getItem(TOKEN_KEY);
+      } catch {
+        // storage blocked
+      }
+
       // The URL path is the starting directory: /~/Dev/project, /Users/me/Dev…
       const cwdPath = decodeURIComponent(location.pathname);
 
@@ -648,7 +669,17 @@
         params.set('command', startupCommand);
         if (document.documentElement.dataset.launch === 'run') params.set('run', '1');
       }
+      params.set('token', token || '');
       const ws = new WebSocket(`${proto}://${location.host}/pty?${params}`);
+
+      function askForToken(message) {
+        statusEl.textContent = 'token required';
+        term.write(
+          `\x1b[33m${message}\x1b[0m\r\n` +
+            'Open the address printed by the server at startup, or add\r\n' +
+            '#token=<contents of ~/.config/mywebterm/token> to this address.\r\n',
+        );
+      }
 
       ws.onopen = () => {
         statusEl.textContent = '';
@@ -658,7 +689,16 @@
         // ghostty-web crashes on an empty write (message reduced to a command)
         if (data) term.write(data);
       };
-      ws.onclose = () => {
+      ws.onclose = (e) => {
+        if (e.code === 4401) {
+          try {
+            localStorage.removeItem(TOKEN_KEY);
+          } catch {
+            // storage blocked
+          }
+          askForToken(token ? 'Invalid token.' : 'This terminal needs its access token.');
+          return;
+        }
         statusEl.textContent = 'disconnected — reload the page';
         term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n');
       };
