@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>mywebterm — onglets groupés</title>
+  <title>mywebterm — tab grouping</title>
   <style>
     :root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
     body { max-width: 34rem; margin: 1rem; }
@@ -20,44 +20,44 @@
 <body>
   <form id="form">
     <label>
-      <span>Adresses du terminal</span>
+      <span>Terminal addresses</span>
       <textarea id="hosts" spellcheck="false"></textarea>
-      <small>Une par ligne, <code>hôte:port</code> comme dans l'URL (<code>term.localhost:8080</code>).
-        <code>*.localhost</code> accepte tous les sous-domaines.</small>
+      <small>One per line, <code>host:port</code> as in the URL (<code>term.localhost:8080</code>).
+        <code>*.localhost</code> matches all subdomains.</small>
     </label>
     <label>
-      <span>Nom du groupe</span>
+      <span>Group name</span>
       <input id="title" type="text">
     </label>
     <label>
-      <span>Couleur</span>
+      <span>Color</span>
       <select id="color">
-        <option value="grey">Gris</option>
-        <option value="blue">Bleu</option>
-        <option value="red">Rouge</option>
-        <option value="yellow">Jaune</option>
-        <option value="green">Vert</option>
-        <option value="pink">Rose</option>
-        <option value="purple">Violet</option>
+        <option value="grey">Grey</option>
+        <option value="blue">Blue</option>
+        <option value="red">Red</option>
+        <option value="yellow">Yellow</option>
+        <option value="green">Green</option>
+        <option value="pink">Pink</option>
+        <option value="purple">Purple</option>
         <option value="cyan">Cyan</option>
         <option value="orange">Orange</option>
       </select>
     </label>
     <label class="check">
       <input id="ungroupOnLeave" type="checkbox">
-      Sortir du groupe un onglet qui quitte le terminal
+      Ungroup a tab that leaves the terminal
     </label>
-    <h2>Ouvrir un terminal au clavier</h2>
-    <p>Raccourci : <kbd id="shortcut">…</kbd> <button type="button" id="editShortcut">Modifier</button></p>
+    <h2>Open a terminal from the keyboard</h2>
+    <p>Shortcut: <kbd id="shortcut">…</kbd> <button type="button" id="editShortcut">Change</button></p>
     <label>
-      <span>Adresse ouverte</span>
+      <span>Address to open</span>
       <input id="openUrl" type="text" spellcheck="false">
     </label>
     <label class="check">
       <input id="inheritCwd" type="checkbox">
-      Depuis un terminal, ouvrir le nouveau dans le même dossier
+      From a terminal, open the new one in the same directory
     </label>
-    <button type="submit">Enregistrer et regrouper</button><span id="status"></span>
+    <button type="submit">Save and regroup</button><span id="status"></span>
   </form>
   <script src="defaults.js"></script>
   <script src="options.js"></script>

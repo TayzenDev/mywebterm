@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# Hook Claude Code (Stop, Notification, PreToolUse) : notifie l'onglet mywebterm
-# quand Claude a fini ou attend une réponse. Ne fait rien hors de mywebterm
-# (variable MYWEBTERM posée par le serveur), on peut donc le déclarer dans
-# ~/.claude/settings.json pour tous les terminaux.
+# Claude Code hook (Stop, Notification, PreToolUse): notifies the mywebterm tab
+# when Claude is done or waiting for an answer. Does nothing outside mywebterm
+# (MYWEBTERM variable set by the server), so it can be declared in
+# ~/.claude/settings.json for all terminals.
 #
-# Claude Code lit la sortie standard des hooks : on écrit sur /dev/tty, le
-# terminal de la session, et rien sur stdout.
+# Claude Code reads hooks' standard output: write to /dev/tty, the session's
+# terminal, and nothing to stdout.
 import json
 import os
 import re
@@ -29,25 +29,25 @@ event = data.get("hook_event_name")
 title = body = None
 
 if event == "Stop":
-    title = "Claude a terminé"
+    title = "Claude is done"
     body = first_line(data.get("last_assistant_message"))
 elif event == "Notification":
     kind = data.get("notification_type")
     message = data.get("message", "")
-    # « waiting for your input » arrive une minute après Stop : déjà notifié
+    # "waiting for your input" arrives a minute after Stop: already notified
     if kind == "idle_prompt" or "waiting for your input" in message:
         sys.exit(0)
-    title = "Claude demande une autorisation" if kind == "permission_prompt" else "Claude attend une réponse"
+    title = "Claude needs permission" if kind == "permission_prompt" else "Claude is waiting for an answer"
     body = first_line(message)
 elif event == "PreToolUse":
     tool = data.get("tool_name")
     tool_input = data.get("tool_input") or {}
     if tool == "AskUserQuestion":
         questions = tool_input.get("questions") or [{}]
-        title = "Claude pose une question"
+        title = "Claude has a question"
         body = first_line(questions[0].get("question"))
     elif tool == "ExitPlanMode":
-        title = "Claude propose un plan"
+        title = "Claude proposes a plan"
         body = ""
 
 if title is None:
@@ -59,7 +59,7 @@ def clean(text):
 
 
 seq = f"\x1b]777;notify;{clean(title).replace(';', ',')};{clean(body or '')}\x07"
-# Dans tmux, la séquence doit traverser le multiplexeur (set -g allow-passthrough on)
+# In tmux, the sequence must pass through the multiplexer (set -g allow-passthrough on)
 if os.environ.get("TMUX"):
     seq = "\x1bPtmux;" + seq.replace("\x1b", "\x1b\x1b") + "\x1b\\"
 

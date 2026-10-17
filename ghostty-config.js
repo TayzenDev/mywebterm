@@ -1,4 +1,4 @@
-// Lecture de la config Ghostty pour reprendre son apparence dans le navigateur.
+// Reads the Ghostty config to reuse its look in the browser.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import os from 'node:os';
@@ -16,14 +16,14 @@ const THEME_DIRS = [
   '/Applications/Ghostty.app/Contents/Resources/ghostty/themes',
 ];
 
-// Index de palette Ghostty → nom de couleur xterm.js / ghostty-web
+// Ghostty palette index → xterm.js / ghostty-web color name
 const PALETTE_NAMES = [
   'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
   'brightBlack', 'brightRed', 'brightGreen', 'brightYellow',
   'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite',
 ];
 
-// Clé Ghostty → clé ITheme
+// Ghostty key → ITheme key
 const COLOR_KEYS = {
   background: 'background',
   foreground: 'foreground',
@@ -33,7 +33,7 @@ const COLOR_KEYS = {
   'selection-foreground': 'selectionForeground',
 };
 
-// Format Ghostty : « clé = valeur » par ligne, une clé peut être répétée.
+// Ghostty format: "key = value" per line, a key can be repeated.
 function parse(text) {
   const entries = [];
   for (const line of text.split('\n')) {
@@ -56,12 +56,12 @@ function readEntries(file) {
   }
 }
 
-// Ghostty accepte « 3e4251 » comme « #3e4251 »
+// Ghostty accepts "3e4251" as "#3e4251"
 function color(value) {
   return /^[0-9a-f]{6}$/i.test(value) ? `#${value}` : value;
 }
 
-// Applique les couleurs d'une liste d'entrées sur un thème ITheme
+// Applies the colors from a list of entries to an ITheme theme
 function applyColors(theme, entries) {
   for (const [key, value] of entries) {
     if (key === 'palette') {
@@ -76,23 +76,23 @@ function applyColors(theme, entries) {
 }
 
 function loadTheme(name) {
-  // Un chemin absolu est accepté tel quel par Ghostty
+  // Ghostty accepts an absolute path as is
   const candidates = name.startsWith('/') ? [name] : THEME_DIRS.map((dir) => join(dir, name));
   for (const file of candidates) {
     const entries = readEntries(file);
     if (entries.length) return applyColors({}, entries);
   }
-  console.warn(`Thème Ghostty introuvable : ${name}`);
+  console.warn(`Ghostty theme not found: ${name}`);
   return {};
 }
 
-// Relu à chaque chargement de page : un changement dans Ghostty s'applique
-// au prochain rechargement.
+// Re-read on every page load: a change in Ghostty applies on the next
+// reload.
 export function loadGhosttyConfig() {
   const entries = CONFIG_FILES.flatMap(readEntries);
   const last = (key) => entries.findLast(([k]) => k === key)?.[1];
 
-  // « theme = Nom » ou « theme = light:Clair,dark:Sombre »
+  // "theme = Name" or "theme = light:Light,dark:Dark"
   const themes = { light: {}, dark: {} };
   const themeValue = last('theme');
   if (themeValue) {
@@ -106,7 +106,7 @@ export function loadGhosttyConfig() {
       themes.light = themes.dark = loadTheme(themeValue);
     }
   }
-  // Les couleurs écrites directement dans la config priment sur le thème
+  // Colors set directly in the config take precedence over the theme
   applyColors(themes.light, entries);
   if (themes.dark !== themes.light) applyColors(themes.dark, entries);
 
@@ -114,8 +114,8 @@ export function loadGhosttyConfig() {
     const n = Number(last(key));
     return Number.isFinite(n) && last(key) !== undefined ? n : undefined;
   };
-  // Plusieurs « font-family » = polices de secours ; une valeur vide remet
-  // la liste à zéro (comme dans Ghostty).
+  // Multiple "font-family" = fallback fonts; an empty value resets the list
+  // (as in Ghostty).
   const fontFamilies = [];
   for (const [key, value] of entries) {
     if (key !== 'font-family') continue;

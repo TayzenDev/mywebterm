@@ -1,8 +1,8 @@
-// Range les onglets du terminal dans un groupe d'onglets « Terminal », un par
-// fenêtre. Même code pour Firefox (page d'événements) et Chrome (service worker).
-// Pour Zen, voir le mod zen-mod/.
-// Chrome ne charge que ce fichier (service worker) ; Firefox charge defaults.js
-// juste avant (manifest.json).
+// Moves terminal tabs into a "Terminal" tab group, one per window. Same code
+// for Firefox (event page) and Chrome (service worker). For Zen, see the
+// zen-mod/ mod.
+// Chrome only loads this file (service worker); Firefox loads defaults.js
+// right before it (manifest.json).
 globalThis.importScripts?.('defaults.js');
 
 function isTerminal(url, hosts) {
@@ -18,9 +18,9 @@ function isTerminal(url, hosts) {
   );
 }
 
-// Onglets déjà rangés. On ne les range qu'une fois : un onglet de terminal que
-// l'utilisateur sort du groupe à la main y reste, même quand son URL change
-// (?title=…). Vidé au redémarrage du navigateur, ce qui regroupe les onglets restaurés.
+// Tabs already grouped. Each is grouped only once: a terminal tab the user
+// manually moves out of the group stays out, even when its URL changes
+// (?title=…). Cleared on browser restart, which regroups restored tabs.
 async function placedTabs() {
   const { placed = [] } = await api.storage.session.get('placed');
   return new Set(placed);
@@ -48,11 +48,11 @@ async function groupTab(tab, s) {
   await api.tabGroups.update(groupId, { title: s.title, color: s.color });
 }
 
-// Retourne true si `placed` a changé.
+// Returns true if `placed` changed.
 async function handleTab(tab, s, placed) {
   if (!tab.url) return false;
   if (isTerminal(tab.url, s.hosts)) {
-    // Un onglet épinglé ne peut pas être groupé
+    // A pinned tab cannot be grouped
     if (placed.has(tab.id) || tab.pinned) return false;
     await groupTab(tab, s);
     placed.add(tab.id);
@@ -66,15 +66,15 @@ async function handleTab(tab, s, placed) {
   return true;
 }
 
-// Les événements arrivent en rafale (restauration de session, plusieurs onglets
-// ouverts d'un coup) : on les traite un par un pour ne créer qu'un seul groupe.
+// Events arrive in bursts (session restore, several tabs opened at once):
+// handle them one at a time so only one group gets created.
 let queue = Promise.resolve();
 function serialize(fn) {
   queue = queue.then(fn).catch((err) => console.error('[mywebterm]', err));
   return queue;
 }
 
-// fresh : repartir de zéro (au démarrage, après un changement d'options)
+// fresh: start over (on startup, after an options change)
 function onTabs(getTabs, fresh = false) {
   return serialize(async () => {
     const [s, placed, tabs] = await Promise.all([
@@ -84,7 +84,7 @@ function onTabs(getTabs, fresh = false) {
     ]);
     let changed = fresh;
     for (const tab of tabs) {
-      // Un onglet peut avoir été fermé entre l'événement et son traitement
+      // A tab may have been closed between the event and its handling
       changed =
         (await handleTab(tab, s, placed).catch((err) => console.warn('[mywebterm]', err))) ||
         changed;
@@ -111,14 +111,14 @@ api.tabs.onRemoved.addListener((tabId) => {
 api.runtime.onStartup.addListener(regroupAll);
 api.runtime.onInstalled.addListener(regroupAll);
 
-// Demandé par la page d'options après un enregistrement
+// Requested by the options page after saving
 api.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'regroup') return regroupAll().then(() => true);
 });
 
-// Raccourci clavier (modifiable dans les réglages du navigateur). La page garde
-// le dossier courant dans le chemin de l'URL : depuis un terminal, on le reprend,
-// sans le titre ni la commande en cours (?title=, ?c=).
+// Keyboard shortcut (configurable in the browser settings). The page keeps the
+// current directory in the URL path: from a terminal, reuse it, without the
+// title or the running command (?title=, ?c=).
 async function openTerminal() {
   const s = await api.storage.sync.get(DEFAULTS);
   const [active] = await api.tabs.query({ active: true, lastFocusedWindow: true });

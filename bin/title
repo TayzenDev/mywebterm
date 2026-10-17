@@ -1,4 +1,4 @@
 #!/bin/sh
-# Renomme l'onglet mywebterm courant. Sans argument : revient au titre automatique.
-# La séquence OSC privée est interceptée par la page, elle n'atteint jamais le terminal.
+# Renames the current mywebterm tab. With no argument: back to the automatic title.
+# The private OSC sequence is intercepted by the page and never reaches the terminal.
 printf '\033]6767;title;%s\007' "$*"

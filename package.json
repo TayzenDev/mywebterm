@@ -2,7 +2,8 @@
   "name": "mywebterm",
   "version": "0.1.0",
   "private": true,
-  "description": "Mon terminal local dans le navigateur, avec ghostty-web",
+  "description": "A local terminal in the browser, powered by ghostty-web",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "start": "node server.js"

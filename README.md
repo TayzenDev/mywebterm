@@ -1,6 +1,7 @@
 # mywebterm
 
-Mon terminal local, dans le navigateur, avec [ghostty-web](https://github.com/coder/ghostty-web).
+My local terminal, in the browser, built on [ghostty-web](https://github.com/coder/ghostty-web).
+Inspired by [tweety](https://github.com/pomdtr/tweety).
 
 ```bash
 npm install
@@ -8,278 +9,290 @@ npm start
 # → http://127.0.0.1:8080
 ```
 
-Chaque onglet ouvert lance son propre shell (`$SHELL -l`).
+Each tab runs its own shell (`$SHELL -l`).
 
-## Ouvrir dans un dossier
+## Open in a directory
 
-Le chemin de l'URL est le dossier de départ :
+The URL path is the starting directory:
 
-| URL                                     | Dossier                         |
-| --------------------------------------- | ------------------------------- |
-| `http://127.0.0.1:8080/`                | home                            |
-| `http://127.0.0.1:8080/~/Dev/projet`    | `~/Dev/projet`                  |
-| `http://127.0.0.1:8080/Users/moi/Dev`   | `/Users/moi/Dev`                |
-| `http://127.0.0.1:8080/Dev/projet`      | `/Dev/projet`, sinon `~/Dev/projet` |
+| URL                                     | Directory                                  |
+| --------------------------------------- | ------------------------------------------ |
+| `http://127.0.0.1:8080/`                | home                                       |
+| `http://127.0.0.1:8080/~/Dev/project`   | `~/Dev/project`                            |
+| `http://127.0.0.1:8080/Users/me/Dev`    | `/Users/me/Dev`                            |
+| `http://127.0.0.1:8080/Dev/project`     | `/Dev/project`, otherwise `~/Dev/project`  |
 
-Si le dossier n'existe pas, le shell s'ouvre dans le home avec un avertissement.
-Les chemins `/fonts/…`, `/ghostty-web/…` et `/config.json` sont réservés.
+If the directory doesn't exist, the shell opens in your home directory with a warning.
+The paths `/fonts/…`, `/ghostty-web/…` and `/config.json` are reserved.
 
-L'URL suit ensuite le dossier courant à chaque `cd` (zsh uniquement, pas pendant un `ssh`) :
-recharger la page ou la mettre en favori rouvre le shell au même endroit.
+The URL then follows the current directory on every `cd` (zsh only, not during `ssh`): reloading
+the page or bookmarking it reopens the shell in the same place.
 
-## Lancer une commande
+## Run a command
 
-`?command=` (ou `?c=`) tape une commande au premier prompt, dans le dossier de l'URL :
-`http://127.0.0.1:8080/~/Dev/projet?c=htop`. Elle reste dans l'historique, et on retrouve le
-shell quand elle se termine.
+`?command=` (or `?c=`) types a command at the first prompt, in the URL's directory:
+`http://127.0.0.1:8080/~/Dev/project?c=htop`. It stays in the history, and you get the shell back
+when it exits.
 
-Elle n'est validée d'office que si l'onglet a été ouvert par vous : barre d'adresse, favori,
-ou lien depuis le terminal lui-même (en-tête `Sec-Fetch-Site`). Ouverte depuis un autre site,
-elle est seulement tapée : Entrée pour la lancer, Ctrl+C pour l'annuler.
+It only runs automatically if you opened the tab yourself: address bar, bookmark, or a link from
+the terminal itself (`Sec-Fetch-Site` header). When opened from another site, it is only typed:
+press Enter to run it, Ctrl+C to cancel.
 
-Ensuite, `?c=` suit le programme en cours, s'il fait partie de la table `PROGRAMS` (htop, vim,
-lazygit, tmux, ssh, claude…) : recharger la page ou la mettre en favori le relance. Le paramètre
-disparaît au retour du prompt. Les autres commandes (`npm install`, `git push`…) n'y sont jamais
-mises, pour qu'un rechargement ne les relance pas, ni `psql`/`pgcli`, dont la ligne contient
-souvent un mot de passe.
+After that, `?c=` follows the running program if it is in the `PROGRAMS` table (htop, vim,
+lazygit, tmux, ssh, claude…): reloading the page or bookmarking it starts it again. The parameter
+goes away when the prompt comes back. Other commands (`npm install`, `git push`…) are never put
+there, so that a reload doesn't run them again, nor are `psql`/`pgcli`, whose command line often
+contains a password.
 
-Pour les agents IA, recharger doit rouvrir **la même conversation**, même avec plusieurs sessions
-dans le même dossier. L'intégration zsh enveloppe donc `claude` et `pi` : lancés sans session
-explicite, ils reçoivent un identifiant choisi d'avance (`--session-id <uuid>`), et l'URL prend leur
-commande de reprise (`?c=claude --resume <uuid>`, `?c=pi --session-id <uuid>`). Les options de la
-ligne d'origine (`--model`…) ne sont pas gardées. Limites : une nouvelle session ouverte depuis
-l'agent (`/clear`, `/resume`…) n'est pas suivie, et une fonction `claude` ou `pi` de votre `.zshrc`
-remplace celle-ci. codex et opencode ne permettent pas de choisir l'identifiant au démarrage :
-pour eux, l'URL garde la ligne tapée.
+For AI agents, a reload must reopen **the same conversation**, even with several sessions in the
+same directory. The zsh integration therefore wraps `claude` and `pi`: when started without an
+explicit session, they get an identifier chosen up front (`--session-id <uuid>`), and the URL gets
+their resume command (`?c=claude --resume <uuid>`, `?c=pi --session-id <uuid>`). Options from the
+original command line (`--model`…) are not kept. Limitations: a new session started from inside
+the agent (`/clear`, `/resume`…) is not tracked, and a `claude` or `pi` function in your `.zshrc`
+overrides this one. codex and opencode can't be given a session identifier at startup: for them,
+the URL keeps the command line as typed.
 
-Le titre envoyé par l'agent (le nom de la session pour Claude Code) est gardé à côté, dans `?t=` :
-l'onglet le reprend dès le rechargement, sans attendre que l'agent le renvoie. Il disparaît avec
-`?c=` au retour du prompt.
+The title sent by the agent (the session name for Claude Code) is kept alongside, in `?t=`: the tab
+shows it as soon as it reloads, without waiting for the agent to send it again. It goes away with
+`?c=` when the prompt comes back.
 
-## Titre de l'onglet
+## Tab title
 
-Par ordre de priorité :
+In order of priority:
 
-1. **Nom choisi à la main**, gardé dans l'URL (`?title=API`) : il survit au rechargement et aux favoris.
-   - clic sur le badge en haut à droite, ou `Ctrl+Shift+R` ;
-   - ou la commande `title API` dans le terminal (`title` sans argument → titre automatique).
-   Un nom vide revient au titre automatique.
-2. **Programme en cours** (table `PROGRAMS` dans `public/index.html`), jusqu’au retour du
-   prompt, devant les titres que le programme envoie lui-même :
-   - tmux, herdr, vim, lazygit, htop, psql, man… : le nom du programme ;
-   - `ssh` : `ssh <machine>` (ex. `ssh -p 22 moi@prod-1` → `ssh prod-1`) ;
-   - agents IA (claude, opencode, codex, aider, gemini) : le titre qu'ils envoient — Claude Code et
-     opencode y mettent le nom de la session, sans le symbole d'état placé devant (« ✳ », spinner…)
-     puisque le favicon en tient lieu — sinon leur nom.
-3. **Titre automatique** : le nom du dossier courant, mis à jour à chaque `cd` (zsh uniquement),
-   ou un titre envoyé par un programme (séquences OSC 0/2) — le plus récent l'emporte.
+1. **A name you chose**, kept in the URL (`?title=API`): it survives reloads and bookmarks.
+   - click the badge in the top right corner, or press `Ctrl+Shift+R`;
+   - or run `title API` in the terminal (`title` with no argument → automatic title).
+   An empty name goes back to the automatic title.
+2. **The running program** (`PROGRAMS` table in `public/index.html`), until the prompt comes back,
+   taking precedence over titles the program sends itself:
+   - tmux, herdr, vim, lazygit, htop, psql, man…: the program name;
+   - `ssh`: `ssh <host>` (e.g. `ssh -p 22 me@prod-1` → `ssh prod-1`);
+   - AI agents (claude, opencode, codex, aider, gemini): the title they send. Claude Code and
+     opencode put the session name there; the status symbol in front of it ("✳", spinner…) is
+     removed since the favicon already shows it. Otherwise, their name.
+3. **Automatic title**: the name of the current directory, updated on every `cd` (zsh only), or a
+   title sent by a program (OSC 0/2 sequences). The most recent one wins.
 
-Pour suivre le dossier et les commandes, le serveur lance zsh avec
-`ZDOTDIR=shell-integration/zsh` : ce `.zshenv` restaure votre `ZDOTDIR`, charge votre config
-habituelle puis ajoute deux hooks. `precmd` envoie le dossier courant (séquence OSC 7) et signale le
-retour au prompt, `preexec` envoie la commande lancée. Rien à modifier dans votre `.zshrc`.
+To track the directory and commands, the server starts zsh with `ZDOTDIR=shell-integration/zsh`:
+this `.zshenv` restores your `ZDOTDIR`, loads your usual config, then adds two hooks. `precmd` sends
+the current directory (OSC 7 sequence) and reports that the prompt is back; `preexec` sends the
+command being run. Nothing to change in your `.zshrc`.
 
 ## Favicon
 
-Par défaut, une invite de commande aux couleurs du thème. Pendant qu'un programme de la table
-`PROGRAMS` tourne, son icône : logo [simple-icons](https://simpleicons.org) (CC0) sur la couleur de
-la marque, servi par `/icons/<slug>.svg`, ou un emoji pour ceux qui n'ont pas de logo.
+By default, a command prompt in the theme's colors. While a program from the `PROGRAMS` table is
+running, its icon: a [simple-icons](https://simpleicons.org) logo (CC0) on the brand color, served
+from `/icons/<slug>.svg`, or an emoji for those without a logo.
 
 ## Notifications
 
-Quand un agent a fini ou attend une réponse, l'onglet prévient, **s'il n'est pas sous vos yeux**
-(onglet en arrière-plan, ou fenêtre du navigateur derrière une autre application) :
+When an agent is done or waiting for an answer, the tab lets you know, **if you're not looking at
+it** (tab in the background, or browser window behind another application):
 
-- une notification du navigateur, qui ramène à l'onglet au clic. Il faut l'autoriser une fois avec
-  le bouton « 🔔 Activer les notifications » en haut à droite (affiché tant qu'on n'a ni accepté ni
-  refusé). Une seule notification par onglet : la suivante remplace la précédente ;
-- un « ● » devant le titre de l'onglet et une pastille sur le favicon, même sans la permission. Ils
-  disparaissent au retour sur l'onglet, et la notification se ferme.
+- a browser notification, which brings you back to the tab when clicked. You need to allow it once
+  with the "🔔 Enable notifications" button in the top right corner (shown until you accept or
+  decline). One notification per tab: the next one replaces the previous one;
+- a "●" before the tab title and a dot on the favicon, even without the permission. They go away
+  when you come back to the tab, and the notification closes.
 
-La page réagit aux séquences de notification des terminaux : OSC 9 (iTerm2), OSC 777 (rxvt,
-Ghostty) et OSC 99 (kitty). Les programmes qui en émettent marchent donc tels quels, et la commande
-`notify` en envoie une depuis le shell :
+The page handles terminal notification sequences: OSC 9 (iTerm2), OSC 777 (rxvt, Ghostty) and
+OSC 99 (kitty). Programs that emit them work as is, and the `notify` command sends one from the
+shell:
 
 ```bash
-make test; notify "tests finis"        # titre de l'onglet + message
-notify "Build" "échec à l'étape 3"     # titre + message
+make test; notify "tests done"            # tab title + message
+notify "Build" "failed at step 3"         # title + message
 ```
 
-**Claude Code** : `bin/claude-notify-hook` se déclare comme hook dans `~/.claude/settings.json`.
-Il notifie quand Claude a fini (`Stop`, avec le début de sa réponse), demande une autorisation
-(`Notification`) ou pose une question / propose un plan (`PreToolUse` sur `AskUserQuestion` et
-`ExitPlanMode`). Le rappel « waiting for your input », une minute après la fin, est ignoré. Hors de
-mywebterm (variable `MYWEBTERM` absente), le hook ne fait rien.
+**Claude Code**: register `bin/claude-notify-hook` as a hook in `~/.claude/settings.json`. It
+notifies when Claude is done (`Stop`, with the start of its answer), asks for a permission
+(`Notification`), or asks a question / proposes a plan (`PreToolUse` on `AskUserQuestion` and
+`ExitPlanMode`). The "waiting for your input" reminder, one minute after it's done, is ignored.
+Outside mywebterm (no `MYWEBTERM` variable), the hook does nothing.
 
 ```json
 {
   "hooks": {
-    "Stop": [{ "hooks": [{ "type": "command", "command": "/chemin/vers/mywebterm/bin/claude-notify-hook" }] }],
-    "Notification": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/chemin/vers/mywebterm/bin/claude-notify-hook" }] }],
-    "PreToolUse": [{ "matcher": "AskUserQuestion|ExitPlanMode", "hooks": [{ "type": "command", "command": "/chemin/vers/mywebterm/bin/claude-notify-hook" }] }]
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/path/to/mywebterm/bin/claude-notify-hook" }] }],
+    "Notification": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/path/to/mywebterm/bin/claude-notify-hook" }] }],
+    "PreToolUse": [{ "matcher": "AskUserQuestion|ExitPlanMode", "hooks": [{ "type": "command", "command": "/path/to/mywebterm/bin/claude-notify-hook" }] }]
   }
 }
 ```
 
-Les shells lancés reçoivent `TERM_PROGRAM=mywebterm`, plutôt que celui du terminal qui a lancé le
-serveur : sinon les agents se croiraient dans Ghostty (ou autre) et choisiraient leurs séquences en
-conséquence. Dans tmux, la séquence du hook ne passe que si `set -g allow-passthrough on`.
+Shells get `TERM_PROGRAM=mywebterm` rather than the value of the terminal that started the server:
+otherwise agents would think they run in Ghostty (or another terminal) and pick their sequences
+accordingly. Inside tmux, the hook's sequence only gets through with `set -g allow-passthrough on`.
 
-## Souris
+## Mouse
 
-Quand un programme active la souris (vim `set mouse=a`, htop, tmux `mouse on`…), clics gauche/
-milieu/droit, glisser, mouvements et molette lui sont transmis (formats SGR 1006 et X10, modes
-9/1000/1002/1003), avec Shift/Alt/Ctrl. Sinon, comportement habituel : sélection au glisser,
-molette sur l'historique, menu au clic droit. **Shift** maintenu force la sélection de texte même
-quand le programme capture la souris.
+When a program enables mouse reporting (vim `set mouse=a`, htop, tmux `mouse on`…), left/middle/
+right clicks, drags, motion and the wheel are forwarded to it (SGR 1006 and X10 formats, modes
+9/1000/1002/1003), with Shift/Alt/Ctrl. Otherwise, the usual behavior: drag to select, wheel to
+scroll the history, right click for the menu. Holding **Shift** forces text selection even when
+the program captures the mouse.
 
-## Coller une image
+## Pasting an image
 
-ghostty-web ne colle que du texte, et il avale Ctrl+V. Deux façons de passer une capture d'écran
-à Claude Code (ou à un autre agent) :
+ghostty-web only pastes text, and it swallows Ctrl+V. Two ways to give a screenshot to Claude Code
+(or another agent):
 
-- **Cmd+V** : si le presse-papier ne contient qu'une image, la page l'envoie au serveur, qui
-  l'enregistre dans le dossier temporaire (`$TMPDIR/mywebterm-paste-<date>.png`) et colle son
-  chemin. Claude Code reconnaît un chemin d'image collé et l'attache.
-- **Ctrl+V** (macOS) : transmis au programme, comme dans Ghostty. Claude Code lit alors lui-même
-  le presse-papier du Mac.
+- **Cmd+V**: if the clipboard only holds an image, the page sends it to the server, which saves it
+  in the temporary directory (`$TMPDIR/mywebterm-paste-<date>.png`) and pastes its path. Claude Code
+  recognizes a pasted image path and attaches it.
+- **Ctrl+V** (macOS): forwarded to the program, as in Ghostty. Claude Code then reads the Mac
+  clipboard itself.
 
-Les deux supposent que le programme tourne sur ce Mac : à travers `ssh`, le chemin désigne un
-fichier absent de la machine distante, et Ctrl+V y lit un autre presse-papier.
+Both assume the program runs on this Mac: through `ssh`, the path points to a file that doesn't
+exist on the remote machine, and Ctrl+V reads a different clipboard.
 
-## Thème
+## Theme
 
-Les couleurs viennent de votre config Ghostty (`~/.config/ghostty/config`) : le `theme` choisi
-(cherché dans `~/.config/ghostty/themes` puis dans Ghostty.app), surchargé par les `palette`,
-`background`, `foreground`… écrits directement dans la config. `theme = light:X,dark:Y` suit le mode
-du système. Sont aussi repris `font-size` (13 par défaut, comme Ghostty sur macOS), `font-thicken`
-et `window-padding-x/y`.
+Colors come from your Ghostty config (`~/.config/ghostty/config`): the chosen `theme` (looked up in
+`~/.config/ghostty/themes`, then in Ghostty.app), overridden by `palette`, `background`,
+`foreground`… set directly in the config. `theme = light:X,dark:Y` follows the system appearance.
+`font-size` (13 by default, as in Ghostty on macOS), `font-thicken` and `window-padding-x/y` are
+also used.
 
-La police suit `font-family` (plusieurs lignes = polices de secours). Le serveur cherche les
-fichiers `.ttf`/`.otf` de cette famille dans les dossiers de polices du système (`~/Library/Fonts`,
-`/Library/Fonts`…) et les sert à la page sous `/fonts/<id>` : Safari n'a pas accès aux polices
-installées par l'utilisateur. Une police introuvable sous forme de fichier (ex. Menlo, en `.ttc`)
-est demandée au navigateur par son nom. Sans `font-family`, c'est Menlo.
+The font follows `font-family` (several lines = fallback fonts). The server looks for the `.ttf`/
+`.otf` files of that family in the system font directories (`~/Library/Fonts`, `/Library/Fonts`…)
+and serves them to the page under `/fonts/<id>`: Safari has no access to user-installed fonts. A
+font that can't be found as a file (e.g. Menlo, a `.ttc`) is requested from the browser by name.
+Without `font-family`, Menlo is used.
 
-La config est relue à chaque chargement de page : après un changement dans Ghostty, rechargez.
+The config is read again on every page load: after changing it in Ghostty, reload.
 
-## Adresse : term.localhost
+## Address: term.localhost
 
-`http://term.localhost:8080` marche sans rien configurer : macOS, Chrome, Firefox et Safari
-envoient tout `*.localhost` vers la machine elle-même (127.0.0.1 ou ::1, le serveur écoute sur
-les deux). N'importe quel nom en `.localhost` convient
-(`webterm.localhost`…). Évitez `.local`, réservé à Bonjour/mDNS sur macOS : il faudrait
-une entrée dans `/etc/hosts`, et la résolution peut traîner plusieurs secondes.
+`http://term.localhost:8080` works with no setup: macOS, Chrome, Firefox and Safari send every
+`*.localhost` name to the machine itself (127.0.0.1 or ::1; the server listens on both). Any
+`.localhost` name works (`webterm.localhost`…). Avoid `.local`, which is reserved for Bonjour/mDNS
+on macOS: it would need an `/etc/hosts` entry, and name resolution can take several seconds.
 
-Pour enlever le `:8080` :
+To drop the `:8080`:
 
 ```bash
 sudo scripts/port80.sh install        # → http://term.localhost
-sudo scripts/port80.sh install 8081   # si PORT est différent
+sudo scripts/port80.sh install 8081   # if PORT is different
 sudo scripts/port80.sh uninstall
 ```
 
-Un processus non root ne peut pas écouter sur le port 80 de 127.0.0.1. Le script installe donc un
-LaunchDaemon : launchd (root) écoute sur le port 80 de 127.0.0.1 et ::1, et pour chaque connexion
-lance `nc` sous votre compte, qui la relaie au terminal. Rien n'est ouvert sur le réseau et le
-serveur garde son port. (pf ne convient pas : sur macOS 26, ses règles `rdr` ne s'appliquent pas
-aux connexions locales.)
+A non-root process can't listen on port 80 of 127.0.0.1. The script therefore installs a
+LaunchDaemon: launchd (as root) listens on port 80 of 127.0.0.1 and ::1, and for each connection
+starts `nc` as your user, which relays it to the terminal. Nothing is opened on the network and
+the server keeps its port. (pf doesn't work here: on macOS 26, its `rdr` rules don't apply to local
+connections.)
 
-## Extension : grouper les onglets du terminal
+## Extension: group terminal tabs
 
-`extension/` range automatiquement chaque onglet du terminal dans un groupe d'onglets
-« Terminal » (un par fenêtre), y compris un terminal rouvert (`Cmd+Shift+T`) ou restauré au
-démarrage. Le même dossier sert pour les deux navigateurs. Pour Zen, utilisez plutôt le mod
-ci-dessous : n'installez pas l'extension dans Zen, elle y créerait des groupes d'onglets.
+`extension/` automatically moves every terminal tab into a "Terminal" tab group (one per window),
+including a terminal you reopen (`Cmd+Shift+T`) or one restored at startup. The same folder works
+for both browsers. For Zen, use the mod below instead: don't install the extension in Zen, it
+would create tab groups there.
 
-- **Chrome** : `chrome://extensions` → mode développeur → *Charger l'extension non empaquetée* →
-  dossier `extension/`.
-- **Firefox** (139 ou plus) : `about:debugging#/runtime/this-firefox` → *Charger un module
-  complémentaire temporaire* → `extension/manifest.json`. Il disparaît à la fermeture de Firefox ;
-  pour une installation durable, signez-le en non listé sur addons.mozilla.org
-  (`npx web-ext sign --channel=unlisted --source-dir extension --api-key … --api-secret …`) puis
-  installez le `.xpi` obtenu.
+- **Chrome**: `chrome://extensions` → Developer mode → *Load unpacked* → the `extension/` folder.
+- **Firefox** (139 or later): `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* →
+  `extension/manifest.json`. It goes away when Firefox closes; for a permanent install, sign it as
+  unlisted on addons.mozilla.org
+  (`npx web-ext sign --channel=unlisted --source-dir extension --api-key … --api-secret …`), then
+  install the resulting `.xpi`.
 
-**Raccourci** : `Alt+Shift+T` (Option+Shift+T sur Mac) ouvre un terminal. Depuis un onglet du
-terminal, le nouveau s'ouvre dans le même dossier ; sinon sur `http://term.localhost/` (réglable).
-Pour changer la touche : bouton *Modifier* dans les options, ou `about:addons` → engrenage →
-*Gérer les raccourcis* (Firefox), `chrome://extensions/shortcuts` (Chrome).
+**Shortcut**: `Alt+Shift+T` (Option+Shift+T on Mac) opens a terminal. From a terminal tab, the new
+one opens in the same directory; otherwise at `http://term.localhost/` (configurable). To change
+the key: *Change* button in the options, or `about:addons` → gear icon → *Manage Extension
+Shortcuts* (Firefox), `chrome://extensions/shortcuts` (Chrome).
 
-Les options de l'extension règlent les adresses reconnues (par défaut `127.0.0.1:8080`,
-`localhost:8080`, `term.localhost:8080` et `term.localhost`), le nom et la couleur du groupe.
-Un onglet sorti du groupe à la main y reste ; un onglet qui quitte le terminal pour un autre
-site sort du groupe (désactivable).
+The extension options set the recognized addresses (by default `127.0.0.1:8080`,
+`localhost:8080`, `term.localhost:8080` and `term.localhost`), and the group's name and color. A
+tab you take out of the group yourself stays out; a tab that leaves the terminal for another site
+leaves the group (can be turned off).
 
-## Mod Zen : un dossier « Terminal » par espace
+## Zen mod: one "Terminal" folder per space
 
-`zen-mod/` est un mod pour [Zen](https://zen-browser.app), chargé par le gestionnaire de mods
-[Sine](https://github.com/CosmoCreeper/Sine). Il range chaque onglet du terminal dans le dossier
-« Terminal » **de son espace**, y compris le premier terminal d'un dossier vide, et ouvre un
-terminal au clavier. Contrairement à une extension, un mod a accès aux espaces et aux dossiers de
-Zen.
+`zen-mod/` is a mod for [Zen](https://zen-browser.app), loaded by the
+[Sine](https://github.com/CosmoCreeper/Sine) mod manager. It moves every terminal tab into the
+"Terminal" folder **of its space**, including the first terminal of an empty folder, and opens a
+terminal from the keyboard. Unlike an extension, a mod has access to Zen's spaces and folders.
 
-**Installation**
-1. Installez Sine avec son installeur pour macOS (voir la page des releases de Sine), puis
-   redémarrez Zen. Sine ajoute deux fichiers dans `Zen.app/Contents/Resources` (`config.js`,
-   `defaults/pref/config-prefs.js`) et son moteur dans le profil.
-2. Réglages de Zen → *Sine Mods* → paramètres de Sine : cochez *Enable installing JS from
-   unofficial sources* (préférence `sine.allow-unsafe-js`), le mod n'étant pas dans le catalogue.
-   Un mod JS a tous les droits du navigateur : n'installez par ce biais que des mods dont vous
-   lisez le code.
-3. Toujours dans *Sine Mods*, installez le mod depuis GitHub en donnant l'adresse du dossier
-   `zen-mod` du dépôt (`https://github.com/TayzenDev/mywebterm/tree/main/zen-mod`).
-4. Créez un dossier « Terminal » dans chaque espace où vous voulez ranger les terminaux, ou cochez
-   *Créer le dossier* dans les réglages du mod.
+**Install**
+1. Install Sine with its macOS installer (see Sine's releases page), then restart Zen. Sine adds
+   two files to `Zen.app/Contents/Resources` (`config.js`, `defaults/pref/config-prefs.js`) and its
+   engine to your profile.
+2. Zen settings → *Sine Mods* → Sine settings: check *Enable installing JS from unofficial sources*
+   (`sine.allow-unsafe-js` pref), since the mod isn't in the marketplace. A JS mod has full access
+   to the browser: only install mods this way if you read their code.
+3. Still in *Sine Mods*, install the mod from GitHub with the address of the repository's
+   `zen-mod` folder (`https://github.com/TayzenDev/mywebterm/tree/main/zen-mod`).
+4. Create a "Terminal" folder in each space where you want terminals to go, or check *Create the
+   folder* in the mod settings.
 
-**Réglages** (*Sine Mods* → mywebterm, ou `about:config`, préfixe `mywebterm.`) : nom du dossier,
-création automatique du dossier, sortie du dossier quand l'onglet quitte le terminal, adresses du
-terminal, raccourci (`Alt+Shift+T` par défaut, Option+Shift+T sur Mac), adresse ouverte et reprise du
-dossier courant. Un onglet sorti du dossier à la main n'y est pas remis. Zen épingle les onglets
-d'un dossier, et par défaut `Cmd+W` décharge un onglet épinglé au lieu de le fermer : pour fermer
-vraiment un terminal, passez `zen.pinned-tab-manager.close-shortcut-behavior` à `close`.
+**Settings** (*Sine Mods* → mywebterm, or `about:config`, `mywebterm.` prefix): folder name,
+automatic folder creation, leaving the folder when the tab leaves the terminal, terminal
+addresses, shortcut (`Alt+Shift+T` by default, Option+Shift+T on Mac), address to open and reuse
+of the current directory. A tab you take out of the folder yourself isn't put back. Zen pins the
+tabs in a folder, and by default `Cmd+W` unloads a pinned tab instead of closing it: to really
+close a terminal, set `zen.pinned-tab-manager.close-shortcut-behavior` to `close`.
 
-**Publier une mise à jour** : modifiez `zen-mod/`, augmentez `version` et mettez la date et l'heure
-actuelles dans `updatedAt` de `theme.json`, puis poussez sur GitHub. Sine ne met à jour un mod que
-si `updatedAt` est plus récent que celui de la version installée ; il vérifie au démarrage de Zen
-(si la mise à jour automatique du mod est active dans *Sine Mods*) ou à la demande.
+**Publishing an update**: edit `zen-mod/`, bump `version` and set `updatedAt` in `theme.json` to
+the current date and time, then push to GitHub. Sine only updates a mod when `updatedAt` is newer
+than the installed one; it checks when Zen starts (if auto-update is on for the mod in *Sine
+Mods*) or on demand.
 
-**Mises à jour de Zen** : celles que Zen installe lui-même conservent les fichiers de Sine (le
-programme de mise à jour ne supprime que les fichiers de sa liste et ne vide pas
-`defaults/pref/`). Une réinstallation complète de Zen (nouveau `.dmg`, Homebrew) les efface : il
-faut alors relancer l'installeur de Sine ; les mods, dans le profil, sont conservés. Pour retirer
-Sine de l'application, supprimez ces deux fichiers.
+**Zen updates**: updates installed by Zen itself keep Sine's files (the updater only deletes the
+files on its list and doesn't empty `defaults/pref/`). A full reinstall of Zen (new `.dmg`,
+Homebrew) removes them: run Sine's installer again; mods live in the profile and are kept. To
+remove Sine from the app, delete those two files.
 
-## Fonctionnement
+## How it works
 
 ```
-navigateur (ghostty-web)  ⇄  WebSocket /pty  ⇄  server.js (node-pty)  ⇄  zsh
+browser (ghostty-web)  ⇄  WebSocket /pty  ⇄  server.js (node-pty)  ⇄  zsh
 ```
 
-- `public/index.html` : le terminal ghostty-web, qui envoie les frappes clavier et les redimensionnements.
-- `server.js` : sert la page et la lib, et branche chaque WebSocket sur un vrai pseudo-terminal.
-- `ghostty-config.js` : lit la config et le thème Ghostty, servis sur `/config.json`.
-- `fonts.js` : trouve les fichiers d'une famille de polices installée.
-- `bin/title`, `bin/notify` : commandes ajoutées au `PATH` des shells lancés, qui renomment
-  l'onglet et envoient une notification.
-- `bin/claude-notify-hook` : hook Claude Code qui notifie l'onglet (voir Notifications).
-- `shell-integration/zsh/.zshenv` : signale le dossier courant à la page.
+- `public/index.html`: the ghostty-web terminal, which sends keystrokes and resizes.
+- `server.js`: serves the page and the library, and connects each WebSocket to a real
+  pseudo-terminal.
+- `ghostty-config.js`: reads the Ghostty config and theme, served at `/config.json`.
+- `fonts.js`: finds the files of an installed font family.
+- `bin/title`, `bin/notify`: commands added to the shells' `PATH`, which rename the tab and send a
+  notification.
+- `bin/claude-notify-hook`: Claude Code hook that notifies the tab (see Notifications).
+- `shell-integration/zsh/.zshenv`: reports the current directory to the page.
 
 ## Configuration
 
-| Variable | Défaut      | Rôle                    |
-| -------- | ----------- | ----------------------- |
-| `PORT`   | `8080`      | Port HTTP               |
-| `HOST`   | `127.0.0.1` | Interface d'écoute      |
-| `SHELL`  | `$SHELL`    | Shell à lancer          |
-| `ALLOWED_HOSTS` | | Noms acceptés en plus de `localhost`, `*.localhost` et 127.0.0.1, séparés par des virgules |
+| Variable        | Default     | Purpose                                                                     |
+| --------------- | ----------- | --------------------------------------------------------------------------- |
+| `PORT`          | `8080`      | HTTP port                                                                   |
+| `HOST`          | `127.0.0.1` | Listening interface                                                         |
+| `SHELL`         | `$SHELL`    | Shell to start                                                              |
+| `ALLOWED_HOSTS` |             | Comma-separated names accepted besides `localhost`, `*.localhost` and 127.0.0.1 |
 
-## Sécurité
+## Security
 
-Ce serveur donne un accès shell complet à la machine.
+This server gives full shell access to the machine.
 
-- Il écoute uniquement sur `127.0.0.1` par défaut. Ne le passez pas en `HOST=0.0.0.0` sans ajouter
-  d'authentification : toute personne de votre réseau aurait alors un shell sur votre machine.
-- Les connexions WebSocket venant d'une autre origine sont refusées. Sans ce contrôle, n'importe quel
-  site ouvert dans le navigateur pourrait piloter le terminal.
-- Elles doivent aussi viser un nom local (`localhost`, `*.localhost`, 127.0.0.1 ou `ALLOWED_HOSTS`) :
-  ça bloque le « DNS rebinding », où un site fait pointer son domaine vers 127.0.0.1.
+- By default it only listens on `127.0.0.1`. Don't switch to `HOST=0.0.0.0` without adding
+  authentication: anyone on your network would get a shell on your machine.
+- WebSocket connections from another origin are rejected. Without this check, any site open in the
+  browser could drive the terminal.
+- They must also target a local name (`localhost`, `*.localhost`, 127.0.0.1 or `ALLOWED_HOSTS`):
+  this blocks DNS rebinding, where a site points its own domain at 127.0.0.1.
+
+## Acknowledgements
+
+- [ghostty-web](https://github.com/coder/ghostty-web) by Coder, which brings
+  [Ghostty](https://ghostty.org)'s terminal emulator to the browser: mywebterm is built on it, and
+  Ghostty itself, by Mitchell Hashimoto and its contributors, is where the theme, font and
+  configuration come from.
+- [tweety](https://github.com/pomdtr/tweety) by pomdtr, an integrated terminal for the browser that
+  inspired this project.
+- [node-pty](https://github.com/microsoft/node-pty), [ws](https://github.com/websockets/ws) and
+  [simple-icons](https://simpleicons.org), which do much of the work.
+- [Sine](https://github.com/CosmoCreeper/Sine), which makes JavaScript mods possible in Zen.
+
+## License
+
+[MIT](LICENSE)

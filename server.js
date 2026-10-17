@@ -23,8 +23,8 @@ const BIN_DIR = join(__dirname, 'bin');
 const ZSH_INTEGRATION_DIR = join(__dirname, 'shell-integration', 'zsh');
 const GHOSTTY_DIR = join(dirname(require.resolve('ghostty-web')));
 
-// Sur macOS, le binaire spawn-helper de node-pty perd parfois son bit exécutable
-// à l'installation, ce qui provoque « posix_spawnp failed ».
+// On macOS, node-pty's spawn-helper binary sometimes loses its executable bit
+// on install, which causes "posix_spawnp failed".
 const spawnHelper = join(
   dirname(require.resolve('node-pty')),
   '..',
@@ -43,9 +43,9 @@ const MIME = {
   '.otf': 'font/otf',
 };
 
-// Config Ghostty + fichiers des polices demandées par « font-family ».
-// Une famille sans fichier exploitable (ex. police système en .ttc) n'a pas de
-// faces : la page la demande alors au navigateur par son nom.
+// Ghostty config + files for the fonts requested by "font-family".
+// A family with no usable file (e.g. a .ttc system font) has no faces: the
+// page then asks the browser for it by name.
 function pageConfig() {
   const { fontFamilies, ...config } = loadGhosttyConfig();
   const fonts = fontFamilies.map((family) => ({
@@ -55,9 +55,9 @@ function pageConfig() {
   return { home: os.homedir(), ...config, fonts };
 }
 
-// Fichiers statiques : la lib sous /ghostty-web/, les polices installées sous
-// /fonts/<id>, les favicons de programmes sous /icons/<slug>.svg. Tout autre
-// chemin est un dossier à ouvrir : on renvoie la page.
+// Static files: the lib under /ghostty-web/, installed fonts under
+// /fonts/<id>, program favicons under /icons/<slug>.svg. Any other path is a
+// directory to open: serve the page.
 async function serveStatic(req, res) {
   const url = new URL(req.url, 'http://localhost');
   let file;
@@ -68,7 +68,7 @@ async function serveStatic(req, res) {
       return;
     }
   } else if (url.pathname.startsWith('/fonts/')) {
-    // Uniquement les fichiers trouvés par findFontFaces, jamais un chemin libre
+    // Only files found by findFontFaces, never an arbitrary path
     file = fontFilePath(Number(url.pathname.slice('/fonts/'.length)));
   } else if (url.pathname === '/config.json') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -95,30 +95,30 @@ async function serveStatic(req, res) {
   }
 }
 
-// La page, pour tout chemin qui désigne un dossier. Un lien sur un autre site
-// peut ouvrir http://localhost:8080/?command=… : la commande n'est lancée
-// d'office que si la navigation vient de l'utilisateur (barre d'adresse,
-// favori : « none ») ou de la page elle-même. Sinon la page se contente de la
-// taper au prompt, sans la valider.
+// The page, for any path that names a directory. A link on another site can
+// open http://localhost:8080/?command=…: the command only runs right away if
+// the navigation comes from the user (address bar, bookmark: "none") or from
+// the page itself. Otherwise the page just types it at the prompt without
+// submitting it.
 async function servePage(req, res) {
   const site = req.headers['sec-fetch-site'];
   const launch = site === 'none' || site === 'same-origin' ? 'run' : 'type';
   try {
     const html = await readFile(join(PUBLIC_DIR, 'index.html'), 'utf8');
     res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
-    res.end(html.replace('<html lang="fr">', `<html lang="fr" data-launch="${launch}">`));
+    res.end(html.replace('<html', `<html data-launch="${launch}"`));
   } catch {
     res.writeHead(404).end('Not found');
   }
 }
 
-// Pour zsh : ZDOTDIR pointe vers shell-integration/zsh, dont le .zshenv restaure
-// la config de l'utilisateur puis signale le dossier courant à chaque prompt.
-// Le .zshenv place aussi la commande de départ dans la ligne de saisie du
-// premier prompt (et la valide si run).
+// For zsh: ZDOTDIR points to shell-integration/zsh, whose .zshenv restores the
+// user's config, then reports the current directory at each prompt.
+// The .zshenv also puts the startup command in the input line of the first
+// prompt (and submits it if run).
 const IS_ZSH = SHELL.endsWith('/zsh');
-// Environnement transmis aux shells, sans la version du terminal qui a lancé
-// le serveur (TERM_PROGRAM est remplacé)
+// Environment passed to shells, without the version of the terminal that
+// started the server (TERM_PROGRAM is replaced)
 const { TERM_PROGRAM_VERSION: _, ...PARENT_ENV } = process.env;
 function shellIntegrationEnv(command, run) {
   if (!IS_ZSH) return {};
@@ -131,9 +131,9 @@ function shellIntegrationEnv(command, run) {
   return env;
 }
 
-// Chemin de l'URL → dossier de départ du shell.
-// « /~/Dev » et « /Users/moi/Dev » sont pris tels quels ; « /Dev » qui n'existe pas
-// à la racine est cherché dans le home. Retourne null si rien ne correspond.
+// URL path → shell starting directory.
+// "/~/Dev" and "/Users/me/Dev" are taken as is; "/Dev", which doesn't exist at
+// the root, is looked up in the home. Returns null if nothing matches.
 function resolveCwd(urlPath) {
   const home = os.homedir();
   const path = urlPath.replace(/\/+$/, '');
@@ -145,7 +145,7 @@ function resolveCwd(urlPath) {
     try {
       if (statSync(dir).isDirectory()) return dir;
     } catch {
-      // n'existe pas, on essaie le suivant
+      // doesn't exist, try the next one
     }
   }
   return null;
@@ -153,9 +153,8 @@ function resolveCwd(urlPath) {
 
 const server = createServer(serveStatic);
 
-// N'accepte que les connexions venant de cette page : sans ça, n'importe quel
-// site ouvert dans le navigateur pourrait se connecter à ws://localhost et
-// exécuter des commandes sur la machine.
+// Only accept connections from this page: otherwise any site open in the
+// browser could connect to ws://localhost and run commands on the machine.
 const wss = new WebSocketServer({
   server,
   path: '/pty',
@@ -165,10 +164,10 @@ const wss = new WebSocketServer({
   },
 });
 
-// Noms qui désignent cette machine : localhost, *.localhost (term.localhost…),
-// les IP de loopback et ALLOWED_HOSTS. Sans cette liste, un site qui fait
-// pointer son propre domaine vers 127.0.0.1 (« DNS rebinding ») aurait une
-// origine égale à son Host et passerait le contrôle ci-dessus.
+// Names that refer to this machine: localhost, *.localhost (term.localhost…),
+// loopback IPs and ALLOWED_HOSTS. Without this list, a site pointing its own
+// domain to 127.0.0.1 ("DNS rebinding") would have an origin equal to its Host
+// and would pass the check above.
 const ALLOWED_HOSTS = (process.env.ALLOWED_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
 function isLocalName(host = '') {
   const name = host.toLowerCase().replace(/:\d+$/, '');
@@ -176,9 +175,9 @@ function isLocalName(host = '') {
     || name === '127.0.0.1' || name === '[::1]' || ALLOWED_HOSTS.includes(name);
 }
 
-// Image collée dans la page (le pty ne transporte que du texte) : enregistrée
-// dans le dossier temporaire, son chemin est collé à la place. Claude Code et
-// les autres agents reconnaissent un chemin d'image collé et l'attachent.
+// Image pasted into the page (the pty only carries text): saved to the temp
+// directory, and its path is pasted instead. Claude Code and other agents
+// recognize a pasted image path and attach it.
 const IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 function pasteImage(shell, { mime, data, bracketed }) {
   const ext = IMAGE_EXT[mime];
@@ -192,14 +191,14 @@ wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost');
   const cols = Number(url.searchParams.get('cols')) || 80;
   const rows = Number(url.searchParams.get('rows')) || 24;
-  // Sans caractères de contrôle : le chemin est réaffiché dans le terminal
+  // No control characters: the path is echoed back in the terminal
   const wanted = (url.searchParams.get('cwd') || '/').replace(/[\x00-\x1f\x7f]/g, '');
   const cwd = resolveCwd(wanted);
-  // Commande de départ (?command= de la page), sur une ligne
+  // Startup command (the page's ?command=), on a single line
   const command = (url.searchParams.get('command') || '').replace(/[\x00-\x1f\x7f]/g, ' ').trim();
   const run = url.searchParams.get('run') === '1';
   if (!cwd) {
-    ws.send(`\x1b[33mDossier introuvable : ${wanted} — ouverture dans le home.\x1b[0m\r\n`);
+    ws.send(`\x1b[33mDirectory not found: ${wanted} — opening in home.\x1b[0m\r\n`);
   }
 
   const shell = pty.spawn(SHELL, ['-l'], {
@@ -211,30 +210,30 @@ wss.on('connection', (ws, req) => {
       ...PARENT_ENV,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      // Sinon hérité du terminal qui a lancé le serveur (ex. ghostty) : les
-      // agents IA choisiraient leurs séquences pour ce terminal-là
+      // Otherwise inherited from the terminal that started the server (e.g.
+      // ghostty): AI agents would pick their sequences for that terminal
       TERM_PROGRAM: 'mywebterm',
-      // Repère pour bin/claude-notify-hook, déclaré pour tous les terminaux
+      // Marker for bin/claude-notify-hook, which is declared for all terminals
       MYWEBTERM: '1',
-      // Donne accès aux commandes `title` et `notify`
+      // Makes the `title` and `notify` commands available
       PATH: `${BIN_DIR}:${process.env.PATH}`,
       ...shellIntegrationEnv(command, run),
     },
   });
-  // Autres shells : on la tape d'avance, elle sera lue au premier prompt
+  // Other shells: type it ahead, it will be read at the first prompt
   if (command && !IS_ZSH) shell.write(command + (run ? '\r' : ''));
-  console.log(`[pty ${shell.pid}] ${SHELL} démarré dans ${cwd || os.homedir()} (${cols}x${rows})`);
+  console.log(`[pty ${shell.pid}] ${SHELL} started in ${cwd || os.homedir()} (${cols}x${rows})`);
 
   shell.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
   });
   shell.onExit(({ exitCode }) => {
-    console.log(`[pty ${shell.pid}] terminé (code ${exitCode})`);
+    console.log(`[pty ${shell.pid}] exited (code ${exitCode})`);
     ws.close();
   });
 
-  // Messages du navigateur : texte brut = frappes clavier,
-  // JSON {type:"resize"} = redimensionnement, {type:"image"} = image collée.
+  // Browser messages: plain text = keystrokes,
+  // JSON {type:"resize"} = resize, {type:"image"} = pasted image.
   ws.on('message', (raw) => {
     const msg = raw.toString();
     if (msg.startsWith('{')) {
@@ -249,7 +248,7 @@ wss.on('connection', (ws, req) => {
           return;
         }
       } catch {
-        // pas du JSON : on le traite comme une saisie normale
+        // not JSON: treat it as normal input
       }
     }
     shell.write(msg);
@@ -259,14 +258,14 @@ wss.on('connection', (ws, req) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`Terminal disponible sur http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`Terminal available at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
 });
 
-// Les navigateurs résolvent localhost et *.localhost (term.localhost) aussi en ::1,
-// parfois en premier : on écoute donc également sur la loopback IPv6, en passant
-// les connexions au même serveur.
+// Browsers also resolve localhost and *.localhost (term.localhost) to ::1,
+// sometimes first: so also listen on the IPv6 loopback, handing connections to
+// the same server.
 if (HOST === '127.0.0.1') {
   createNetServer((socket) => server.emit('connection', socket))
-    .on('error', (err) => console.warn(`Pas d'écoute sur [::1]:${PORT} (${err.code})`))
+    .on('error', (err) => console.warn(`Not listening on [::1]:${PORT} (${err.code})`))
     .listen(PORT, '::1');
 }

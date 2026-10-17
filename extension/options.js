@@ -12,13 +12,13 @@ api.storage.sync.get(DEFAULTS).then((s) => {
 async function showShortcut() {
   const commands = await api.commands.getAll();
   const shortcut = commands.find((c) => c.name === 'open-terminal')?.shortcut;
-  $('shortcut').textContent = shortcut || 'aucun';
+  $('shortcut').textContent = shortcut || 'none';
 }
 showShortcut();
-// Revient d'un autre onglet (réglage des raccourcis) : on rafraîchit
+// Back from another tab (shortcut settings): refresh
 document.addEventListener('visibilitychange', () => document.hidden || showShortcut());
 
-// Firefox a une page dédiée ; Chrome, chrome://extensions/shortcuts
+// Firefox has a dedicated page; Chrome, chrome://extensions/shortcuts
 $('editShortcut').addEventListener('click', () => {
   if (api.commands.openShortcutSettings) api.commands.openShortcutSettings();
   else api.tabs.create({ url: 'chrome://extensions/shortcuts' });
@@ -40,6 +40,6 @@ $('form').addEventListener('submit', async (e) => {
   });
   $('hosts').value = hosts.join('\n');
   await api.runtime.sendMessage({ type: 'regroup' });
-  $('status').textContent = 'Enregistré.';
+  $('status').textContent = 'Saved.';
   setTimeout(() => ($('status').textContent = ''), 2000);
 });

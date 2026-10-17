@@ -1,5 +1,5 @@
-// Favicons de programmes à partir des logos simple-icons (CC0) : logo blanc ou
-// noir sur un carré arrondi de la couleur de la marque.
+// Program favicons from simple-icons logos (CC0): white or black logo on a
+// rounded square in the brand color.
 import * as simpleIcons from 'simple-icons';
 
 const BY_SLUG = new Map(
@@ -8,7 +8,7 @@ const BY_SLUG = new Map(
     .map((icon) => [icon.slug, icon]),
 );
 
-// Logo foncé sur fond clair, clair sur fond foncé (luminance relative WCAG)
+// Dark logo on a light background, light on a dark one (WCAG relative luminance)
 function logoColor(hex) {
   const [r, g, b] = [0, 2, 4].map((i) => {
     const c = parseInt(hex.slice(i, i + 2), 16) / 255;
@@ -17,7 +17,7 @@ function logoColor(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#000' : '#fff';
 }
 
-// SVG du favicon pour un slug simple-icons, ou null s'il n'existe pas
+// Favicon SVG for a simple-icons slug, or null if it doesn't exist
 export function iconSvg(slug) {
   const icon = BY_SLUG.get(slug);
   if (!icon) return null;

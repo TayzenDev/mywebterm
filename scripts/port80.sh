@@ -1,7 +1,7 @@
 #!/bin/sh
-# Ouvre http://term.localhost sans « :8080 ». launchd (root) écoute sur le port 80
-# de 127.0.0.1 et ::1 uniquement ; à chaque connexion, il lance `nc` sous votre
-# compte pour la relayer vers le terminal. Le serveur garde son port et ses droits.
+# Opens http://term.localhost without ":8080". launchd (root) listens on port 80
+# of 127.0.0.1 and ::1 only; for each connection, it runs `nc` as your user to
+# relay it to the terminal. The server keeps its port and privileges.
 #
 #   sudo scripts/port80.sh install [port]
 #   sudo scripts/port80.sh uninstall
@@ -11,7 +11,7 @@ LABEL=local.mywebterm.port80
 PLIST=/Library/LaunchDaemons/$LABEL.plist
 
 if [ "$(id -u)" -ne 0 ] || [ -z "${SUDO_USER:-}" ]; then
-  echo "À lancer avec sudo, depuis votre compte." >&2
+  echo "Run with sudo, from your own account." >&2
   exit 1
 fi
 
@@ -54,14 +54,14 @@ case "${1:-}" in
 </plist>
 EOF
     launchctl bootstrap system "$PLIST"
-    echo "Port 80 → $PORT : http://term.localhost"
+    echo "Port 80 → $PORT: http://term.localhost"
     ;;
   uninstall)
     remove
-    echo "Redirection supprimée."
+    echo "Redirect removed."
     ;;
   *)
-    echo "Usage : sudo $0 install [port] | uninstall" >&2
+    echo "Usage: sudo $0 install [port] | uninstall" >&2
     exit 1
     ;;
 esac

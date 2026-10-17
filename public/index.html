@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>mywebterm</title>
     <link rel="icon" id="favicon" />
     <style>
-      /* Remplacées au chargement par les valeurs de la config Ghostty */
+      /* Replaced on load with the values from the Ghostty config */
       :root {
         --bg: #1a1b26;
         --fg: #a9b1d6;
@@ -20,21 +20,21 @@
         height: 100%;
         background: var(--bg);
       }
-      /* Ghostty n'épaissit pas le texte (font-thicken = false par défaut) alors
-         que les navigateurs macOS le font, y compris dans le canvas du terminal. */
+      /* Ghostty doesn't thicken text (font-thicken = false by default) whereas
+         macOS browsers do, including in the terminal canvas. */
       body.thin {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
       #terminal {
-        /* ghostty-web rend ce conteneur éditable : sans ça, Firefox y affiche un
-           curseur de saisie qui clignote en haut à gauche */
+        /* ghostty-web makes this container editable: without this, Firefox shows
+           a blinking text caret in the top-left corner */
         caret-color: transparent;
-        /* Pendant une composition (touche morte ^, ¨…), le navigateur insère le
-           texte provisoire directement dans ce conteneur, avant le canvas : il
-           s'affiche en haut à gauche et décale le rendu. Le texte du conteneur
-           ne doit donc occuper aucune place ni être visible (la police du
-           terminal est passée à ghostty-web, elle n'hérite pas d'ici). */
+        /* During composition (dead key ^, ¨…), the browser inserts the
+           provisional text directly into this container, before the canvas: it
+           shows up in the top-left corner and shifts the rendering. The
+           container's text must therefore take no space and stay invisible (the
+           terminal font is passed to ghostty-web, it doesn't inherit from here). */
         font-size: 0;
         line-height: 0;
         color: transparent;
@@ -92,9 +92,9 @@
   <body>
     <div id="terminal"></div>
     <div id="bar">
-      <span id="status">connexion…</span>
-      <button id="notify-btn" hidden title="Être prévenu quand un agent a fini ou pose une question">🔔 Activer les notifications</button>
-      <span id="title" title="Renommer (Ctrl+Shift+R)"></span>
+      <span id="status">connecting…</span>
+      <button id="notify-btn" hidden title="Get notified when an agent finishes or asks a question">🔔 Enable notifications</button>
+      <span id="title" title="Rename (Ctrl+Shift+R)"></span>
     </div>
 
     <script type="module">
@@ -103,21 +103,21 @@
       const statusEl = document.getElementById('status');
       const titleEl = document.getElementById('title');
       const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
-      titleEl.title = `Renommer (${isMac ? 'Cmd' : 'Ctrl'}+Shift+R)`;
+      titleEl.title = `Rename (${isMac ? 'Cmd' : 'Ctrl'}+Shift+R)`;
 
-      // Le chemin de l'URL est le dossier de départ : /~/Dev/projet, /Users/moi/Dev…
+      // The URL path is the starting directory: /~/Dev/project, /Users/me/Dev…
       const cwdPath = decodeURIComponent(location.pathname);
 
-      // --- Titre de l'onglet -------------------------------------------------
-      // Priorité : nom choisi à la main (gardé dans ?title=) > programme en cours
-      // parmi PROGRAMS > titre automatique. Le titre automatique part du
-      // dossier de l'URL, puis suit le dernier signal du shell : changement de
-      // dossier (OSC 7) ou titre explicite (OSC 0/2).
+      // --- Tab title ---------------------------------------------------------
+      // Priority: name set by hand (kept in ?title=) > running program among
+      // PROGRAMS > automatic title. The automatic title starts from the URL
+      // directory, then follows the shell's latest signal: directory change
+      // (OSC 7) or explicit title (OSC 0/2).
       let manualTitle = new URLSearchParams(location.search).get('title') || '';
-      // { label, keepsOwnTitle, ownTitle, icon } du programme en cours, ou null
+      // { label, keepsOwnTitle, ownTitle, icon } of the running program, or null
       let runningProgram = null;
-      // Titre de l'agent IA relancé par ?c=, gardé dans ?t= : affiché dès son
-      // démarrage, avant qu'il renvoie le sien
+      // Title of the AI agent relaunched by ?c=, kept in ?t=: shown as soon as
+      // it starts, before it sends its own
       const restoredOwnTitle = new URLSearchParams(location.search).get('t') || '';
       const restoredCommand = new URLSearchParams(location.search).get('c') || '';
       let autoTitle = restoredOwnTitle || cwdPath.replace(/\/+$/, '').split('/').pop() || '~';
@@ -131,16 +131,16 @@
       function renderTitle() {
         const program = runningProgram && (runningProgram.ownTitle || runningProgram.label);
         const title = manualTitle || program || autoTitle;
-        // « ● » : notification pas encore vue (voir Notifications)
+        // "●": notification not seen yet (see Notifications)
         document.title = unread ? `● ${title}` : title;
         titleEl.textContent = title;
         renderFavicon(runningProgram?.icon);
       }
 
       // --- Favicon -----------------------------------------------------------
-      // Invite de commande aux couleurs du thème par défaut, logo ou emoji du
-      // programme en cours sinon, avec une pastille tant qu'une notification n'a
-      // pas été vue. Converti en PNG : Safari ignore les favicons SVG.
+      // Command prompt in the theme colors by default, otherwise the running
+      // program's logo or emoji, with a badge while a notification hasn't been
+      // seen. Converted to PNG: Safari ignores SVG favicons.
       const faviconEl = document.getElementById('favicon');
       const faviconCache = new Map();
       let faviconColors = { bg: '#1a1b26', fg: '#a9b1d6', accent: '#9ece6a', badge: '#f7768e' };
@@ -176,7 +176,7 @@
           try {
             await img.decode();
           } catch {
-            return; // logo introuvable : on garde l'icône actuelle
+            return; // logo not found: keep the current icon
           }
           const canvas = document.createElement('canvas');
           canvas.width = canvas.height = 64;
@@ -193,18 +193,18 @@
           }
           faviconCache.set(key, canvas.toDataURL('image/png'));
         }
-        // Un autre changement a pu arriver pendant le chargement
+        // Another change may have come in while loading
         if (currentIcon === key) faviconEl.href = faviconCache.get(key);
       }
 
       // --- Notifications -----------------------------------------------------
-      // Envoyées par les séquences OSC 9, 777 et 99 (agents IA, commande
-      // `notify`, bin/claude-notify-hook). Seulement si l'onglet n'est pas sous
-      // les yeux (onglet caché ou fenêtre en arrière-plan) : notification du
-      // navigateur, plus « ● » devant le titre et une pastille sur le favicon
-      // jusqu'au retour sur l'onglet, même sans permission.
+      // Sent by OSC 9, 777 and 99 sequences (AI agents, `notify` command,
+      // bin/claude-notify-hook). Only when the tab isn't being looked at
+      // (hidden tab or window in the background): browser notification, plus
+      // "●" before the title and a badge on the favicon until the tab is
+      // revisited, even without permission.
       const notifyBtn = document.getElementById('notify-btn');
-      // Une notification à la fois par onglet : la suivante remplace la précédente
+      // One notification at a time per tab: the next one replaces the previous
       const notificationTag = `mywebterm-${Math.random().toString(36).slice(2)}`;
       let unread = false;
       let notification = null;
@@ -213,7 +213,7 @@
         return document.visibilityState === 'visible' && document.hasFocus();
       }
 
-      // title : « Claude a terminé »… ; vide = titre de l'onglet seul
+      // title: "Claude is done"…; empty = tab title only
       function notify(title, body) {
         if (watched()) return;
         if (!unread) {
@@ -246,8 +246,8 @@
       window.addEventListener('focus', markRead);
       document.addEventListener('visibilitychange', markRead);
 
-      // Safari et Firefox n'accordent la permission que sur un geste de
-      // l'utilisateur : bouton affiché tant qu'elle n'a été ni accordée ni refusée
+      // Safari and Firefox only grant permission on a user gesture: the button
+      // is shown as long as it has been neither granted nor denied
       function renderNotifyButton() {
         notifyBtn.hidden = !('Notification' in window) || Notification.permission !== 'default';
       }
@@ -258,9 +258,9 @@
       });
       renderNotifyButton();
 
-      // kitty : ESC ] 99 ; i=1:d=0:p=title ; <texte>. Titre et corps peuvent
-      // arriver en plusieurs séquences (d=0 : à suivre), en base64 si e=1.
-      // Le reste du protocole (icônes, boutons, requêtes p=?) est ignoré.
+      // kitty: ESC ] 99 ; i=1:d=0:p=title ; <text>. Title and body may arrive
+      // in several sequences (d=0: more to come), base64-encoded if e=1.
+      // The rest of the protocol (icons, buttons, p=? queries) is ignored.
       const kittyPending = new Map();
       function kittyNotification(payload) {
         const sep = payload.indexOf(';');
@@ -290,7 +290,7 @@
         else if (parts.title) notify('', parts.title);
       }
 
-      // Chaîne vide = retour au titre automatique
+      // Empty string = back to the automatic title
       function setManualTitle(title) {
         manualTitle = title.trim();
         const url = new URL(location.href);
@@ -300,9 +300,9 @@
         renderTitle();
       }
 
-      // Dossier courant → chemin de l'URL (/~/… sous le home), pour qu'un
-      // rechargement ou un favori rouvre le shell au même endroit.
-      // La racine reste « / » : ce chemin-là désigne le home.
+      // Current directory → URL path (/~/… under home), so that a reload or
+      // a bookmark reopens the shell in the same place.
+      // The root stays "/": that path means home.
       function setUrlPath(dir) {
         if (!dir) return;
         const relative = dir === home ? '~' : dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir.slice(1);
@@ -311,18 +311,18 @@
         if (url.href !== location.href) history.replaceState(null, '', url);
       }
 
-      // Programme en cours → ?c= : un rechargement ou un favori le relance.
-      // Chaîne vide = retour au prompt, on retire le paramètre.
+      // Running program → ?c=: a reload or a bookmark relaunches it.
+      // Empty string = back at the prompt, the parameter is removed.
       function setUrlCommand(commandLine) {
         setUrlParams({ command: '', c: commandLine.trim(), t: commandLine ? undefined : '' });
       }
 
-      // Titre de l'agent IA en cours → ?t=, à côté de sa commande dans ?c=
+      // Title of the running AI agent → ?t=, next to its command in ?c=
       function setUrlOwnTitle(title) {
         if (new URL(location.href).searchParams.has('c')) setUrlParams({ t: title });
       }
 
-      // { nom: valeur } ; '' retire le paramètre, undefined n'y touche pas
+      // { name: value }; '' removes the parameter, undefined leaves it alone
       function setUrlParams(changes) {
         const url = new URL(location.href);
         for (const [name, value] of Object.entries(changes)) {
@@ -337,7 +337,7 @@
         const input = document.createElement('input');
         input.id = 'title-input';
         input.value = manualTitle;
-        input.placeholder = `${autoTitle} (vide = automatique)`;
+        input.placeholder = `${autoTitle} (empty = automatic)`;
         titleEl.replaceWith(input);
         input.focus();
         input.select();
@@ -360,17 +360,17 @@
 
       renderTitle();
 
-      // --- Séquences envoyées par le shell ----------------------------------
-      // - ESC ] 6767 ; title ; <nom> BEL : commande `title` (bin/title)
-      // - ESC ] 6767 ; command ; <ligne> BEL : commande lancée (shell-integration/zsh)
-      // - ESC ] 6767 ; resume ; <ligne> BEL : commande qui reprend la session de
-      //   l'agent IA en cours (shell-integration/zsh)
-      // - ESC ] 6767 ; prompt BEL : retour au prompt, la commande est terminée
-      // - ESC ] 7 ; file://<hôte><chemin> BEL : dossier courant, envoyé à chaque
-      //   prompt par shell-integration/zsh
-      // - ESC ] 9 ; <message> BEL (iTerm2), ESC ] 777 ; notify ; <titre> ; <message> BEL
-      //   (rxvt, Ghostty), ESC ] 99 ; … (kitty) : notification, voir Notifications
-      // On les retire du flux avant de l'envoyer au terminal.
+      // --- Sequences sent by the shell ---------------------------------------
+      // - ESC ] 6767 ; title ; <name> BEL: `title` command (bin/title)
+      // - ESC ] 6767 ; command ; <line> BEL: command started (shell-integration/zsh)
+      // - ESC ] 6767 ; resume ; <line> BEL: command that resumes the running AI
+      //   agent's session (shell-integration/zsh)
+      // - ESC ] 6767 ; prompt BEL: back at the prompt, the command has finished
+      // - ESC ] 7 ; file://<host><path> BEL: current directory, sent at every
+      //   prompt by shell-integration/zsh
+      // - ESC ] 9 ; <message> BEL (iTerm2), ESC ] 777 ; notify ; <title> ; <message> BEL
+      //   (rxvt, Ghostty), ESC ] 99 ; … (kitty): notification, see Notifications
+      // They are stripped from the stream before it goes to the terminal.
       const HANDLERS = {
         '\x1b]6767;': (payload) => {
           const [cmd, ...args] = payload.split(';');
@@ -383,15 +383,15 @@
             runningProgram = entry && {
               label: entry.title === 'ssh' ? sshLabel(programArgs) : program,
               keepsOwnTitle: entry.title === 'own',
-              // Commande relancée depuis l'URL : on reprend son dernier titre
+              // Command relaunched from the URL: reuse its last title
               ownTitle: entry.title === 'own' && commandLine.trim() === restoredCommand.trim() ? restoredOwnTitle : '',
               icon: entry.icon,
             };
             if (runningProgram?.ownTitle) setUrlOwnTitle(runningProgram.ownTitle);
             renderTitle();
           }
-          // Agent IA lancé avec un identifiant de session : sa commande de
-          // reprise (« claude --resume <id> ») remplace la ligne tapée
+          // AI agent started with a session ID: its resume command
+          // (`claude --resume <id>`) replaces the typed line
           if (cmd === 'resume' && runningProgram) setUrlCommand(args.join(';'));
           if (cmd === 'prompt') setUrlCommand('');
           if (cmd === 'prompt' && runningProgram) {
@@ -399,7 +399,7 @@
             renderTitle();
           }
         },
-        // 9;4;… (barre de progression) et les autres sous-commandes ConEmu : ignorées
+        // 9;4;… (progress bar) and the other ConEmu subcommands: ignored
         '\x1b]9;': (payload) => {
           if (!/^\d+;/.test(payload)) notify('', payload);
         },
@@ -413,47 +413,47 @@
           try {
             path = decodeURIComponent(path);
           } catch {
-            // chemin non encodé contenant un « % » : on le garde tel quel
+            // unencoded path containing a "%": keep it as is
           }
           const trimmed = path.replace(/\/+$/, '');
           setAutoTitle(!trimmed || trimmed === home ? '~' : trimmed.split('/').pop());
-          // Sous ssh, le dossier signalé est celui de la machine distante
+          // Under ssh, the reported directory is on the remote machine
           if (!runningProgram?.label.startsWith('ssh')) setUrlPath(trimmed);
         },
       };
       let pending = '';
 
-      // Programmes reconnus tant qu'ils tournent (jusqu'au retour du prompt).
-      // title : ce que l'onglet affiche, devant les titres envoyés par le programme
-      //   - 'name' (par défaut) : le nom du programme
-      //   - 'own' : le titre envoyé par le programme s'il en envoie un (les agents
-      //             IA y résument la session), sinon son nom
-      //   - 'ssh' : « ssh <machine> »
-      // icon : favicon, slug simple-icons (logo servi par /icons/) ou emoji
-      // inUrl: false : ne pas garder la commande dans l'URL (?c=), elle contient
-      //   souvent un mot de passe (postgres://moi:secret@…)
+      // Programs recognized while they run (until the prompt comes back).
+      // title: what the tab shows, ahead of titles sent by the program
+      //   - 'name' (default): the program name
+      //   - 'own': the title sent by the program if it sends one (AI agents
+      //            summarize the session in it), otherwise its name
+      //   - 'ssh': "ssh <host>"
+      // icon: favicon, simple-icons slug (logo served by /icons/) or emoji
+      // inUrl: false: don't keep the command in the URL (?c=), it often
+      //   contains a password (postgres://me:secret@…)
       const PROGRAMS = {
-        // Multiplexeurs et connexions
+        // Multiplexers and connections
         tmux: { icon: 'tmux' },
         herdr: { icon: '🐑' },
         zellij: { icon: '🪟' },
         screen: { icon: '🖥️' },
         ssh: { title: 'ssh', icon: '🔐' },
-        // Agents IA
+        // AI agents
         claude: { title: 'own', icon: 'claude' },
         opencode: { title: 'own', icon: 'opencode' },
         codex: { title: 'own', icon: '🤖' },
         aider: { title: 'own', icon: '🤖' },
         pi: { title: 'own', icon: 'π' },
         gemini: { title: 'own', icon: 'googlegemini' },
-        // Éditeurs
+        // Editors
         vim: { icon: 'vim' },
         nvim: { icon: 'neovim' },
         emacs: { icon: 'gnuemacs' },
         nano: { icon: '📝' },
         hx: { icon: 'helix' },
         micro: { icon: '📝' },
-        // Git, conteneurs, fichiers
+        // Git, containers, files
         lazygit: { icon: 'git' },
         tig: { icon: 'git' },
         gitui: { icon: 'git' },
@@ -463,11 +463,11 @@
         ranger: { icon: '📁' },
         gdu: { icon: '💾' },
         ncdu: { icon: '💾' },
-        // Supervision
+        // Monitoring
         htop: { icon: 'htop' },
         btop: { icon: '📊' },
         top: { icon: '📊' },
-        // Bases de données et consoles
+        // Databases and consoles
         psql: { icon: 'postgresql', inUrl: false },
         pgcli: { icon: 'postgresql', inUrl: false },
         sqlite3: { icon: 'sqlite' },
@@ -479,7 +479,7 @@
       };
       const WRAPPERS = ['command', 'exec', 'nocorrect', 'noglob', 'time', 'sudo', 'env', 'nohup'];
 
-      // « FOO=1 command /opt/bin/tmux new -s x » → { program: 'tmux', args: ['new', '-s', 'x'] }
+      // `FOO=1 command /opt/bin/tmux new -s x` → { program: 'tmux', args: ['new', '-s', 'x'] }
       function parseCommand(commandLine) {
         const words = commandLine.trim().split(/\s+/);
         const index = words.findIndex((w) => !/^\w+=/.test(w) && !WRAPPERS.includes(w));
@@ -487,16 +487,16 @@
         return { program: words[index].split('/').pop(), args: words.slice(index + 1) };
       }
 
-      // Options de ssh suivies d'une valeur (man ssh)
+      // ssh options followed by a value (man ssh)
       const SSH_OPTIONS_WITH_VALUE = 'BbcDEeFIiJLlmOoPpQRSWw';
 
-      // « ssh -p 22 -i clé moi@prod-1 uptime » → « ssh prod-1 »
+      // `ssh -p 22 -i key me@prod-1 uptime` → "ssh prod-1"
       function sshLabel(args) {
         for (let i = 0; i < args.length; i++) {
           const arg = args[i];
           if (arg.startsWith('-') && arg.length > 1) {
-            // Options groupées (-tt, -vp22) : la première qui attend une valeur
-            // la prend dans la suite du mot, ou dans le mot suivant
+            // Grouped options (-tt, -vp22): the first one that expects a value
+            // takes it from the rest of the word, or from the next word
             for (let j = 1; j < arg.length; j++) {
               if (SSH_OPTIONS_WITH_VALUE.includes(arg[j])) {
                 if (j === arg.length - 1) i++;
@@ -511,7 +511,7 @@
         return 'ssh';
       }
 
-      // Prochaine séquence interceptée dans data, ou null
+      // Next intercepted sequence in data, or null
       function findSequence(data) {
         let found = null;
         for (const prefix in HANDLERS) {
@@ -528,11 +528,11 @@
         let seq;
         while ((seq = findSequence(data))) {
           out += data.slice(0, seq.start);
-          // Fin de séquence : BEL ou ESC \
+          // End of sequence: BEL or ESC \
           const rest = data.slice(seq.start + seq.prefix.length);
           const match = /\x07|\x1b\\/.exec(rest);
           if (!match) {
-            // Séquence coupée entre deux messages : on attend la suite
+            // Sequence split across two messages: wait for the rest
             pending = data.slice(seq.start);
             return out;
           }
@@ -545,13 +545,13 @@
       // --- Terminal ----------------------------------------------------------
       const config = await fetch('/config.json').then((r) => r.json());
       home = config.home;
-      // 13 = taille par défaut de Ghostty sur macOS
+      // 13 = Ghostty's default size on macOS
       const fontSize = config.fontSize ?? 13;
       document.body.classList.toggle('thin', !config.fontThicken);
 
-      // Polices de la config Ghostty. Les fichiers trouvés sur le système sont
-      // servis par le serveur (Safari ignore les polices installées par
-      // l'utilisateur) sous un alias ; sinon on tente le nom tel quel.
+      // Fonts from the Ghostty config. Files found on the system are served by
+      // the server (Safari ignores user-installed fonts) under an alias;
+      // otherwise the name is tried as is.
       const fontFamily = config.fonts
         .map(({ family, faces }, i) => {
           if (!faces.length) return `"${family}"`;
@@ -565,15 +565,15 @@
         .concat('Menlo', 'monospace')
         .join(', ');
 
-      // Le terminal mesure la taille des cellules à l'ouverture : la police doit
-      // être chargée avant, sinon les mesures sont faites avec la police de secours.
+      // The terminal measures cell size when it opens: the font must be loaded
+      // first, otherwise measurements are made with the fallback font.
       const variants = ['', 'bold ', 'italic ', 'bold italic '];
       await Promise.all([
         init(),
         ...variants.map((v) => document.fonts.load(`${v}${fontSize}px ${fontFamily}`)),
       ]);
 
-      // Thème Ghostty (« light:…,dark:… » suit le mode clair/sombre du système)
+      // Ghostty theme ("light:…,dark:…" follows the system light/dark mode)
       const dark = matchMedia('(prefers-color-scheme: dark)').matches;
       const theme = config.themes[dark ? 'dark' : 'light'];
       const rootStyle = document.documentElement.style;
@@ -606,8 +606,8 @@
 
       titleEl.addEventListener('click', startRename);
       term.onTitleChange((title) => {
-        // Les agents IA préfixent leur titre d'un symbole d'état (« ✳ », spinner
-        // braille « ⠂ »…) : le favicon le remplace, on le retire du nom de l'onglet.
+        // AI agents prefix their title with a status symbol ("✳", braille
+        // spinner "⠂"…): the favicon replaces it, so strip it from the tab name.
         if (runningProgram?.keepsOwnTitle) {
           runningProgram.ownTitle = title.replace(/^[^\p{L}\p{N}\s]+\s+/u, '');
           setUrlOwnTitle(runningProgram.ownTitle);
@@ -615,15 +615,15 @@
         setAutoTitle(title);
       });
 
-      // Ctrl+Shift+R (Cmd+Shift+R sur macOS) : renommer. Avec ghostty-web, renvoyer true bloque la touche.
+      // Ctrl+Shift+R (Cmd+Shift+R on macOS): rename. With ghostty-web, returning true blocks the key.
       term.attachCustomKeyEventHandler((e) => {
         if ((isMac ? e.metaKey : e.ctrlKey) && e.shiftKey && e.code === 'KeyR') {
-          e.preventDefault(); // sinon Cmd+Shift+R recharge la page
+          e.preventDefault(); // otherwise Cmd+Shift+R reloads the page
           startRename();
           return true;
         }
-        // ghostty-web avale Ctrl+V (raccourci « coller » hors macOS). Sur macOS, où
-        // coller est Cmd+V, on le transmet : Claude Code y lit le presse-papier, image comprise.
+        // ghostty-web swallows Ctrl+V (the "paste" shortcut outside macOS). On macOS,
+        // where paste is Cmd+V, pass it through: Claude Code reads the clipboard there, images included.
         if (isMac && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyV') {
           if (ws.readyState === WebSocket.OPEN) ws.send('\x16');
           return true;
@@ -633,8 +633,8 @@
 
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const params = new URLSearchParams({ cols: term.cols, rows: term.rows, cwd: cwdPath });
-      // Commande de départ (?command= ou ?c=), saisie au premier prompt. Validée
-      // seulement si le serveur juge la navigation sûre (voir servePage).
+      // Startup command (?command= or ?c=), typed at the first prompt. Only
+      // submitted if the server deems the navigation safe (see servePage).
       const query = new URLSearchParams(location.search);
       const startupCommand = query.get('command') ?? query.get('c');
       if (startupCommand) {
@@ -648,19 +648,19 @@
       };
       ws.onmessage = (e) => {
         const data = extractCommands(e.data);
-        // ghostty-web plante sur une écriture vide (message réduit à une commande)
+        // ghostty-web crashes on an empty write (message reduced to a command)
         if (data) term.write(data);
       };
       ws.onclose = () => {
-        statusEl.textContent = 'déconnecté — rechargez la page';
-        term.write('\r\n\x1b[2m[session terminée]\x1b[0m\r\n');
+        statusEl.textContent = 'disconnected — reload the page';
+        term.write('\r\n\x1b[2m[session ended]\x1b[0m\r\n');
       };
 
       term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       });
-      // ghostty-web ne colle que du texte. Une image seule (capture d'écran) part au
-      // serveur, qui l'enregistre et colle son chemin : Claude Code l'attache alors.
+      // ghostty-web only pastes text. An image on its own (screenshot) goes to the
+      // server, which saves it and pastes its path: Claude Code then attaches it.
       document.getElementById('terminal').addEventListener('paste', (e) => {
         const items = [...(e.clipboardData?.items ?? [])];
         if (items.some((item) => item.type === 'text/plain')) return;
@@ -686,17 +686,17 @@
         }
       });
 
-      // --- Souris --------------------------------------------------------------
-      // ghostty-web ne transmet pas la souris aux programmes : quand l'un d'eux
-      // l'active (vim mouse=a, htop, tmux…), on encode nous-mêmes clics, mouvements
-      // et molette. Shift maintenu garde la sélection de texte, comme dans Ghostty.
+      // --- Mouse -------------------------------------------------------------
+      // ghostty-web doesn't forward the mouse to programs: when one enables it
+      // (vim mouse=a, htop, tmux…), we encode clicks, motion and wheel
+      // ourselves. Holding Shift keeps text selection, as in Ghostty.
       const container = document.getElementById('terminal');
-      const BUTTONS = { 0: 0, 1: 1, 2: 2 }; // gauche, milieu, droit
+      const BUTTONS = { 0: 0, 1: 1, 2: 2 }; // left, middle, right
       let pressedButton = null;
       let lastMotion = {};
 
-      // Mode demandé par le programme : 9 = clics, 1000 = clics + relâchements,
-      // 1002 = + glisser, 1003 = tout mouvement
+      // Mode requested by the program: 9 = clicks, 1000 = clicks + releases,
+      // 1002 = + drag, 1003 = any motion
       function trackingMode() {
         for (const mode of [1003, 1002, 1000, 9]) if (term.getMode(mode)) return mode;
         return 0;
@@ -706,7 +706,7 @@
         return trackingMode() !== 0 && !e.shiftKey;
       }
 
-      // Cellule (1-based) sous le pointeur, bornée à l'écran
+      // Cell (1-based) under the pointer, clamped to the screen
       function cellAt(e) {
         const rect = container.querySelector('canvas').getBoundingClientRect();
         const col = Math.floor(((e.clientX - rect.left) / rect.width) * term.cols) + 1;
@@ -717,7 +717,7 @@
         };
       }
 
-      // button : 0-2 boutons, 3 = aucun, 64/65 = molette ; +32 pour un mouvement
+      // button: 0-2 buttons, 3 = none, 64/65 = wheel; +32 for motion
       function sendMouse(button, e, release = false) {
         if (ws.readyState !== WebSocket.OPEN) return;
         const code = button + (e.shiftKey ? 4 : 0) + (e.altKey ? 8 : 0) + (e.ctrlKey ? 16 : 0);
@@ -725,14 +725,14 @@
         if (term.getMode(1006)) {
           ws.send(`\x1b[<${code};${col};${row}${release ? 'm' : 'M'}`);
         } else if (col <= 223 && row <= 223) {
-          // Format historique : un octet par valeur, relâchement = bouton 3
+          // Legacy format: one byte per value, release = button 3
           const b = release ? 3 + (code & ~3) : code;
           ws.send(`\x1b[M${String.fromCharCode(32 + b, 32 + col, 32 + row)}`);
         }
       }
 
-      // Phase de capture sur le conteneur : on passe avant les écouteurs du canvas
-      // (sélection, menu contextuel) et on les bloque quand la souris est capturée.
+      // Capture phase on the container: we run before the canvas listeners
+      // (selection, context menu) and block them when the mouse is captured.
       container.addEventListener(
         'mousedown',
         (e) => {
@@ -746,7 +746,7 @@
         true,
       );
 
-      // Sur window : le relâchement compte même hors du terminal
+      // On window: the release counts even outside the terminal
       window.addEventListener(
         'mouseup',
         (e) => {
@@ -767,7 +767,7 @@
           const hovering = mode === 1003 && container.contains(e.target);
           if (!dragging && !hovering) return;
           const { col, row } = cellAt(e);
-          // Un seul évènement par cellule
+          // Only one event per cell
           if (col === lastMotion.col && row === lastMotion.row) return;
           lastMotion = { col, row };
           sendMouse((pressedButton ?? 3) + 32, e);
@@ -786,8 +786,8 @@
         true,
       );
 
-      // Molette : un évènement par ligne défilée (les trackpads envoient de
-      // petits deltas, on les accumule)
+      // Wheel: one event per scrolled line (trackpads send small deltas, so
+      // they are accumulated)
       let wheelRemainder = 0;
       term.attachCustomWheelEventHandler((e) => {
         if (!captures(e)) return false;

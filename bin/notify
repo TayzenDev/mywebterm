@@ -1,16 +1,16 @@
 #!/bin/sh
-# Envoie une notification du navigateur depuis l'onglet mywebterm courant.
-#   notify "tests finis"            → titre de l'onglet, message « tests finis »
-#   notify "Build" "échec à l'étape 3"
-# Séquence OSC 777 (comme Ghostty) : la page l'intercepte, elle n'atteint jamais
-# le terminal. La page ne notifie que si l'onglet n'est pas sous vos yeux.
+# Sends a browser notification from the current mywebterm tab.
+#   notify "tests done"             → tab title, message "tests done"
+#   notify "Build" "failed at step 3"
+# OSC 777 sequence (as in Ghostty): the page intercepts it, it never reaches the
+# terminal. The page only notifies if the tab is not in front of you.
 if [ $# -ge 2 ]; then
   title=$1
   shift
 else
   title=
 fi
-# Le « ; » sépare le titre du message dans la séquence
+# The ";" separates the title from the message in the sequence
 title=$(printf '%s' "$title" | tr ';[:cntrl:]' ', ')
 body=$(printf '%s' "$*" | tr '[:cntrl:]' ' ')
 printf '\033]777;notify;%s;%s\007' "$title" "$body"

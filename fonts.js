@@ -1,5 +1,5 @@
-// Recherche des fichiers de police installés à partir d'un nom de famille,
-// comme le fait Ghostty pour « font-family ».
+// Finds installed font files from a family name, as Ghostty does for
+// "font-family".
 import { closeSync, openSync, readdirSync, readSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import os from 'node:os';
@@ -15,7 +15,7 @@ const FONT_DIRS = [
   '/usr/local/share/fonts',
 ];
 
-// Seuls les fichiers simples sont lisibles par les navigateurs (pas les .ttc)
+// Browsers can only read single-font files (not .ttc)
 const FORMATS = { '.ttf': 'truetype', '.otf': 'opentype' };
 
 function read(fd, position, length) {
@@ -29,8 +29,8 @@ function decodeName(buf, platformId) {
   return Buffer.from(buf).swap16().toString('utf16le');
 }
 
-// Lit les tables « name » et « OS/2 » d'un fichier TrueType/OpenType :
-// noms de famille, graisse et italique.
+// Reads the "name" and "OS/2" tables of a TrueType/OpenType file:
+// family names, weight and italic.
 function readFace(file) {
   const fd = openSync(file, 'r');
   try {
@@ -46,7 +46,7 @@ function readFace(file) {
     const name = read(fd, tables.name.offset, tables.name.length);
     const count = name.readUInt16BE(2);
     const stringOffset = name.readUInt16BE(4);
-    // nameID 1 = famille, 16 = famille typographique (regroupe Light, Medium…)
+    // nameID 1 = family, 16 = typographic family (groups Light, Medium…)
     const families = new Set();
     for (let i = 0; i < count; i++) {
       const rec = 6 + i * 12;
@@ -100,8 +100,8 @@ function facesFor(family) {
   return index.flatMap((face, id) => (face.families.has(wanted) ? [{ ...face, id }] : []));
 }
 
-// Variantes installées d'une famille ; l'index est reconstruit si la famille
-// est introuvable (police installée depuis le démarrage du serveur).
+// Installed variants of a family; the index is rebuilt if the family is not
+// found (font installed since the server started).
 export function findFontFaces(family) {
   index ??= buildIndex();
   let faces = facesFor(family);
@@ -112,7 +112,7 @@ export function findFontFaces(family) {
   return faces.map(({ id, weight, style, format }) => ({ id, weight, style, format }));
 }
 
-// Chemin du fichier d'une variante renvoyée par findFontFaces
+// File path of a variant returned by findFontFaces
 export function fontFilePath(id) {
   return index?.[id]?.path;
 }

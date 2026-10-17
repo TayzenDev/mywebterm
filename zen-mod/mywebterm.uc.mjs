@@ -1,18 +1,18 @@
-// mywebterm pour Zen : range chaque onglet du terminal dans le dossier « Terminal »
-// de son espace et ouvre un terminal au clavier. Sine charge ce module dans
-// chaque fenêtre de navigation (voir theme.json).
+// mywebterm for Zen: moves each terminal tab into the "Terminal" folder of its
+// space and opens a terminal from the keyboard. Sine loads this module in
+// every browser window (see theme.json).
 
 const PREFS = {
-  // host[:port] tel qu'il apparaît dans l'URL, séparés par des virgules ;
-  // « *.exemple » accepte les sous-domaines
+  // host[:port] as it appears in the URL, comma-separated;
+  // `*.example` matches subdomains
   hosts: ['mywebterm.hosts', '127.0.0.1:8080, localhost:8080, term.localhost:8080, term.localhost'],
   folderName: ['mywebterm.folder-name', 'Terminal'],
-  // Créer le dossier dans l'espace s'il n'existe pas ; sinon l'onglet reste où il est
+  // Create the folder in the space if missing; otherwise the tab stays where it is
   createFolder: ['mywebterm.create-folder', false],
-  // Sortir du dossier un onglet rangé qui quitte le terminal pour un autre site
+  // Move a placed tab out of the folder when it leaves the terminal for another site
   leaveFolder: ['mywebterm.leave-folder', true],
   openUrl: ['mywebterm.open-url', 'http://term.localhost/'],
-  // Depuis un terminal, le raccourci ouvre le nouveau dans le même dossier
+  // From a terminal, the shortcut opens the new one in the same directory
   inheritCwd: ['mywebterm.inherit-cwd', true],
   shortcut: ['mywebterm.shortcut', 'Alt+Shift+T'],
 };
@@ -24,12 +24,12 @@ function pref(key) {
     : Services.prefs.getStringPref(name, fallback).trim() || fallback;
 }
 
-// Marque, gardée par la restauration de session, des onglets rangés par le mod :
-// un onglet sorti du dossier à la main n'y est pas remis, et seul un onglet rangé
-// par le mod en ressort quand il quitte le terminal.
+// Marker, kept by session restore, on tabs placed by the mod: a tab manually
+// moved out of the folder is not put back, and only a tab placed by the mod
+// is moved out when it leaves the terminal.
 const PLACED = 'mywebterm-placed';
 
-// Relu quand les réglages changent (readPrefs)
+// Reread when the prefs change (readPrefs)
 let hosts = [];
 function readHosts() {
   hosts = pref('hosts')
@@ -62,11 +62,11 @@ function onLocation(tab) {
   if (!tab || tab.hasAttribute('zen-empty-tab')) return;
   const placed = SessionStore.getCustomTabValue(tab, PLACED) === '1';
   if (isTerminal(tab.linkedBrowser?.currentURI)) {
-    // Épinglé : dans un dossier (Zen y épingle les onglets) ou parmi les Essentiels
+    // Pinned: in a folder (Zen pins tabs there) or among the Essentials
     if (placed || tab.pinned) return;
     const folder = spaceFolder(tab);
     if (!folder) return;
-    // Comme « Déplacer vers le dossier » de Zen, qui épingle l'onglet au passage
+    // Like Zen's "Move to folder", which pins the tab along the way
     folder.addTabs([tab]);
     SessionStore.setCustomTabValue(tab, PLACED, '1');
   } else if (placed) {
@@ -78,8 +78,8 @@ function onLocation(tab) {
   }
 }
 
-// Changement d'adresse d'un onglet, y compris par history.replaceState (dossier
-// courant, ?title=…) : sans effet sur un onglet déjà rangé.
+// A tab's address changes, including through history.replaceState (current
+// directory, ?title=…): no effect on a tab already placed.
 const progressListener = {
   onLocationChange(browser, webProgress) {
     if (webProgress.isTopLevel) onLocation(gBrowser.getTabForBrowser(browser));
@@ -89,14 +89,14 @@ const progressListener = {
 function openTerminal() {
   let url = pref('openUrl');
   const current = gBrowser.selectedBrowser.currentURI;
-  // La page garde le dossier courant dans le chemin de l'URL ; on laisse le titre
-  // et la commande en cours (?title=, ?c=)
+  // The page keeps the current directory in the URL path; drop the title and
+  // the running command (?title=, ?c=)
   if (pref('inheritCwd') && isTerminal(current)) url = current.prePath + current.filePath;
   openTrustedLinkIn(url, 'tab');
 }
 
-// « Alt+Shift+T » → { code: 'KeyT', mods: Set { 'altKey', 'shiftKey' } }. On compare
-// la touche physique (e.code) : avec Option sur Mac, e.key vaut « ˇ » et non « T ».
+// `Alt+Shift+T` → { code: 'KeyT', mods: Set { 'altKey', 'shiftKey' } }. Compare the
+// physical key (e.code): with Option on Mac, e.key is `ˇ`, not `T`.
 const MODIFIERS = { alt: 'altKey', option: 'altKey', shift: 'shiftKey', ctrl: 'ctrlKey', control: 'ctrlKey', cmd: 'metaKey', command: 'metaKey', meta: 'metaKey' };
 const MODIFIER_KEYS = ['altKey', 'shiftKey', 'ctrlKey', 'metaKey'];
 
@@ -115,7 +115,7 @@ let shortcut = null;
 function readShortcut() {
   const text = pref('shortcut');
   shortcut = parseShortcut(text);
-  if (!shortcut) console.warn(`[mywebterm] raccourci invalide : ${text}`);
+  if (!shortcut) console.warn(`[mywebterm] invalid shortcut: ${text}`);
 }
 
 function onKeyDown(event) {
@@ -126,7 +126,7 @@ function onKeyDown(event) {
   openTerminal();
 }
 
-// Réglages lus au démarrage, puis relus quand ils changent
+// Prefs read on startup, then reread when they change
 const PREF_BRANCH = 'mywebterm.';
 function readPrefs() {
   readHosts();
@@ -139,13 +139,13 @@ async function init() {
   readPrefs();
   Services.prefs.addObserver(PREF_BRANCH, readPrefs);
   gBrowser.addTabsProgressListener(progressListener);
-  // Onglets déjà ouverts (restauration de session, mod activé en cours de route)
+  // Tabs already open (session restore, mod enabled mid-session)
   for (const tab of gZenWorkspaces.allStoredTabs) onLocation(tab);
-  // En phase de capture, avant les raccourcis de Zen et de la page
+  // In the capture phase, before Zen's and the page's shortcuts
   window.addEventListener('keydown', onKeyDown, true);
 }
 
-// Désactivation du mod dans Sine, sans redémarrer (supportsUnload)
+// Mod disabled in Sine, without a restart (supportsUnload)
 window.addUnloadListener?.(() => {
   gBrowser.removeTabsProgressListener(progressListener);
   Services.prefs.removeObserver(PREF_BRANCH, readPrefs);
