@@ -288,25 +288,35 @@ wss.on('connection', (ws, req) => {
     ws.send(`\x1b[33mDirectory not found: ${wanted} — opening in home.\x1b[0m\r\n`);
   }
 
-  const shell = pty.spawn(SHELL, ['-l'], {
-    name: 'xterm-256color',
-    cols,
-    rows,
-    cwd: cwd || os.homedir(),
-    env: {
-      ...PARENT_ENV,
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
-      // Otherwise inherited from the terminal that started the server (e.g.
-      // ghostty): AI agents would pick their sequences for that terminal
-      TERM_PROGRAM: 'mywebterm',
-      // Marker for bin/claude-notify-hook, which is declared for all terminals
-      MYWEBTERM: '1',
-      // Makes the `title` and `notify` commands available
-      PATH: `${BIN_DIR}:${process.env.PATH}`,
-      ...shellIntegrationEnv(command, run),
-    },
-  });
+  // A failure (SHELL missing or not executable, spawn-helper…) would
+  // otherwise crash the server and every open tab with it
+  let shell;
+  try {
+    shell = pty.spawn(SHELL, ['-l'], {
+      name: 'xterm-256color',
+      cols,
+      rows,
+      cwd: cwd || os.homedir(),
+      env: {
+        ...PARENT_ENV,
+        TERM: 'xterm-256color',
+        COLORTERM: 'truecolor',
+        // Otherwise inherited from the terminal that started the server (e.g.
+        // ghostty): AI agents would pick their sequences for that terminal
+        TERM_PROGRAM: 'mywebterm',
+        // Marker for bin/claude-notify-hook, which is declared for all terminals
+        MYWEBTERM: '1',
+        // Makes the `title` and `notify` commands available
+        PATH: `${BIN_DIR}:${process.env.PATH}`,
+        ...shellIntegrationEnv(command, run),
+      },
+    });
+  } catch (err) {
+    console.error(`Could not start ${SHELL}: ${err.message}`);
+    ws.send(`\x1b[31mCould not start ${SHELL}: ${err.message}\x1b[0m\r\n`);
+    ws.close();
+    return;
+  }
   // Other shells: type it ahead, it will be read at the first prompt
   if (command && !IS_ZSH) shell.write(command + (run ? '\r' : ''));
   console.log(`[pty ${shell.pid}] ${SHELL} started in ${cwd || os.homedir()} (${cols}x${rows})`);

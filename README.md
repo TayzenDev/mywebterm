@@ -57,6 +57,11 @@ goes away when the prompt comes back. Other commands (`npm install`, `git push`�
 there, so that a reload doesn't run them again, nor are `psql`/`pgcli`, whose command line often
 contains a password.
 
+`?c=` ends up in the browser history, its sync and session restore. A command line that looks like
+it holds a secret (`password`, `token`, `key`, `secret`, `auth`…, a known API key format such as
+`sk-…` or `ghp_…`, or `user:password@` in a URL) is only put there if you say so: a prompt in the
+corner asks, without taking the focus from the program. It goes away when the command ends.
+
 For AI agents, a reload must reopen **the same conversation**, even with several sessions in the
 same directory. The zsh integration therefore wraps `claude` and `pi`: when started without an
 explicit session, they get an identifier chosen up front (`--session-id <uuid>`), and the URL gets

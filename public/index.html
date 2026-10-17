@@ -119,6 +119,47 @@
         padding: 4px 12px;
         cursor: pointer;
       }
+      #secret-ask {
+        position: fixed;
+        top: 32px;
+        right: 10px;
+        box-sizing: border-box;
+        width: min(24rem, calc(100% - 20px));
+        padding: 8px 10px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--fg) 8%, var(--bg));
+        color: var(--fg);
+        font: 12px system-ui, sans-serif;
+      }
+      #secret-ask p {
+        margin: 0 0 6px;
+      }
+      #secret-ask pre {
+        margin: 0 0 6px;
+        padding: 4px 6px;
+        max-height: 6em;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        border-radius: 4px;
+        background: var(--bg);
+        font: 11px ui-monospace, monospace;
+      }
+      #secret-ask div {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+      #secret-ask button {
+        font: inherit;
+        color: inherit;
+        background: var(--bg);
+        border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--bg));
+        border-radius: 4px;
+        padding: 2px 10px;
+        cursor: pointer;
+      }
       #title-input {
         font: inherit;
         color: inherit;
@@ -450,6 +491,63 @@
         setUrlParams({ command: '', c, sig, t: c ? undefined : '' });
       }
 
+      // --- Secrets in the URL --------------------------------------------------
+      // ?c= ends up in the browser history, its sync and session restore. A
+      // command line that looks like it holds a secret (password, API key,
+      // token, user:password@ in a URL…) only goes there if you say so: a
+      // prompt in the corner, which leaves the focus to the running program.
+      // False positives (`ssh -i key`) only cost a click.
+      const SECRET_PATTERN = new RegExp(
+        [
+          'pass(word|wd)?', 'pwd', 'secret', 'token', 'key', 'auth', 'bearer', 'credential', 'cookie',
+          // Well-known key formats: OpenAI/Anthropic/Stripe, GitHub, Slack, AWS
+          '\\b[sprk]k-[\\w-]{10,}', '\\bgh[pousr]_\\w{20,}', '\\bxox[abpr]-', '\\bAKIA[0-9A-Z]{16}',
+          // scheme://user:password@host
+          '://[^\\s/:@]+:[^\\s/@]+@',
+        ].join('|'),
+        'i',
+      );
+      let secretAsk = null; // { box, resolve } while the prompt is shown
+      // Incremented at each command, resume and prompt: an answer given after
+      // the command ended doesn't touch the URL
+      let commandRun = 0;
+
+      // Resolves to true (keep in the URL) or false (don't, or dismissed)
+      function askKeepInUrl(commandLine) {
+        dismissSecretAsk();
+        const box = document.createElement('div');
+        box.id = 'secret-ask';
+        const text = document.createElement('p');
+        text.textContent = 'This command may contain a secret. Keep it in the URL (history, sync)?';
+        const code = document.createElement('pre');
+        code.textContent = commandLine;
+        const buttons = document.createElement('div');
+        const skip = document.createElement('button');
+        skip.textContent = "Don't keep";
+        const keep = document.createElement('button');
+        keep.textContent = 'Keep';
+        buttons.append(skip, keep);
+        box.append(text, code, buttons);
+        document.body.append(box);
+        return new Promise((resolve) => {
+          secretAsk = { box, resolve };
+          const answer = (value) => {
+            dismissSecretAsk(value);
+            term.focus();
+          };
+          skip.addEventListener('click', () => answer(false));
+          keep.addEventListener('click', () => answer(true));
+        });
+      }
+
+      // The command ended or was replaced: the question no longer applies
+      function dismissSecretAsk(value = false) {
+        if (!secretAsk) return;
+        secretAsk.box.remove();
+        secretAsk.resolve(value);
+        secretAsk = null;
+      }
+
       // Title of the running AI agent → ?t=, next to its command in ?c=
       function setUrlOwnTitle(title) {
         if (new URL(location.href).searchParams.has('c')) setUrlParams({ t: title });
@@ -512,7 +610,20 @@
             const commandLine = args.join(';');
             const { program, args: programArgs } = parseCommand(commandLine);
             const entry = PROGRAMS[program];
-            const urlUpdated = setUrlCommand(entry && entry.inUrl !== false ? commandLine : '');
+            const inUrl = entry && entry.inUrl !== false;
+            const run = ++commandRun;
+            let urlUpdated;
+            // Already in the URL at load (kept before): don't ask again
+            if (inUrl && SECRET_PATTERN.test(commandLine) && commandLine.trim() !== restoredCommand.trim()) {
+              urlUpdated = setUrlCommand('');
+              askKeepInUrl(commandLine).then((keep) => {
+                if (keep && run === commandRun) {
+                  setUrlCommand(commandLine).then(() => runningProgram?.ownTitle && setUrlOwnTitle(runningProgram.ownTitle));
+                }
+              });
+            } else {
+              urlUpdated = setUrlCommand(inUrl ? commandLine : '');
+            }
             runningProgram = entry && {
               label: entry.title === 'ssh' ? sshLabel(programArgs) : program,
               keepsOwnTitle: entry.title === 'own',
@@ -526,8 +637,17 @@
           }
           // AI agent started with a session ID: its resume command
           // (`claude --resume <id>`) replaces the typed line
-          if (cmd === 'resume' && runningProgram) setUrlCommand(args.join(';'));
-          if (cmd === 'prompt') setUrlCommand('');
+          // (generated by the zsh integration, without the typed line's secrets)
+          if (cmd === 'resume' && runningProgram) {
+            commandRun++;
+            dismissSecretAsk();
+            setUrlCommand(args.join(';'));
+          }
+          if (cmd === 'prompt') {
+            commandRun++;
+            dismissSecretAsk();
+            setUrlCommand('');
+          }
           if (cmd === 'prompt' && runningProgram) {
             runningProgram = null;
             renderTitle();
