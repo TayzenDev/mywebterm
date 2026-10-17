@@ -1,4 +1,4 @@
 node_modules/
 .DS_Store
-# Extension signed by "web-ext sign" (README)
+# Extension signed by "web-ext sign" (docs/extension.md)
 web-ext-artifacts/
