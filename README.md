@@ -219,7 +219,8 @@ terminal from the keyboard. Unlike an extension, a mod has access to Zen's space
 **Install**
 1. Install Sine with its macOS installer (see Sine's releases page), then restart Zen. Sine adds
    two files to `Zen.app/Contents/Resources` (`config.js`, `defaults/pref/config-prefs.js`) and its
-   engine to your profile.
+   engine to your profile. The terminal app you run the installer from needs permission to modify
+   other apps first (see below).
 2. Zen settings → *Sine Mods* → Sine settings: check *Enable installing JS from unofficial sources*
    (`sine.allow-unsafe-js` pref), since the mod isn't in the marketplace. A JS mod has full access
    to the browser: only install mods this way if you read their code.
@@ -227,6 +228,15 @@ terminal from the keyboard. Unlike an extension, a mod has access to Zen's space
    `zen-mod` folder (`https://github.com/TayzenDev/mywebterm/tree/main/zen-mod`).
 4. Create a "Terminal" folder in each space where you want terminals to go, or check *Create the
    folder* in the mod settings.
+
+**No *Sine Mods* section after installing?** macOS doesn't let an app modify another app's bundle
+without permission, and the installer then fails silently: Sine lands in your profile, but not in
+`Zen.app`. Check with `ls /Applications/Zen.app/Contents/Resources/config.js`. If the file is
+missing:
+1. System Settings → Privacy & Security → *App Management* (Sine's docs also mention *Full Disk
+   Access*): turn it on for the terminal app you run the installer from (Terminal, Ghostty…).
+2. Quit and reopen that terminal app, run Sine's installer again, then restart Zen.
+3. Still nothing? `about:support` → *Clear Startup Cache*, and restart Zen once more.
 
 **Settings** (*Sine Mods* → mywebterm, or `about:config`, `mywebterm.` prefix): folder name,
 automatic folder creation, leaving the folder when the tab leaves the terminal, terminal
@@ -241,9 +251,12 @@ than the installed one; it checks when Zen starts (if auto-update is on for the 
 Mods*) or on demand.
 
 **Zen updates**: updates installed by Zen itself keep Sine's files (the updater only deletes the
-files on its list and doesn't empty `defaults/pref/`). A full reinstall of Zen (new `.dmg`,
-Homebrew) removes them: run Sine's installer again; mods live in the profile and are kept. To
-remove Sine from the app, delete those two files.
+files on its list and doesn't empty `defaults/pref/`). One exception: Zen prepares an update in a
+copy of the app as soon as it is downloaded, and swaps it in at the next restart. If you install
+Sine while an update is waiting, that restart removes Sine's files from the app: run Sine's
+installer again once Zen is up to date. A full reinstall of Zen (new `.dmg`, Homebrew) also removes
+them. Mods live in the profile and are always kept. To remove Sine from the app, delete those two
+files.
 
 ## How it works
 
