@@ -56,8 +56,25 @@
         transition: opacity 0.15s;
       }
       #bar:hover,
-      #bar:focus-within {
+      #bar:focus-within,
+      #bar:has(#font-size.shown) {
         opacity: 1;
+      }
+      /* Shown for a moment after Cmd/Ctrl +/-, then fades out */
+      #font-size {
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg) 12%, var(--bg));
+        font-variant-numeric: tabular-nums;
+        opacity: 0;
+        transition: opacity 0.4s;
+      }
+      #font-size.shown {
+        opacity: 1;
+        transition: none;
+      }
+      #font-size[hidden] {
+        display: none;
       }
       #title {
         cursor: text;
@@ -152,6 +169,7 @@
     <div id="bar">
       <span id="status">connecting…</span>
       <button id="notify-btn" hidden title="Get notified when an agent finishes or asks a question">🔔 Enable notifications</button>
+      <span id="font-size" hidden></span>
       <span id="title" title="Rename (Ctrl+Shift+R)"></span>
     </div>
 
@@ -826,8 +844,20 @@
       if (config.paddingX !== undefined) rootStyle.setProperty('--pad-x', `${config.paddingX}px`);
       if (config.paddingY !== undefined) rootStyle.setProperty('--pad-y', `${config.paddingY}px`);
 
+      // Text size set with Cmd/Ctrl +/- (see below): kept for this tab only,
+      // so a reload keeps it but a new terminal starts at the configured size
+      const FONT_SIZE_KEY = 'mywebterm-font-size';
+      function sessionStore(use) {
+        try {
+          return use(sessionStorage);
+        } catch {
+          return null;
+        }
+      }
+      const savedFontSize = Number(sessionStore((s) => s.getItem(FONT_SIZE_KEY)));
+
       const term = new Terminal({
-        fontSize,
+        fontSize: savedFontSize || fontSize,
         fontFamily,
         cursorBlink: true,
         theme,
@@ -839,6 +869,45 @@
       fit.fit();
       fit.observeResize();
       term.focus();
+
+      function setFontSize(size) {
+        size = Math.min(Math.max(size, 6), 72);
+        // Shown even at a limit, so the key doesn't seem ignored
+        if (size !== term.options.fontSize) {
+          term.options.fontSize = size;
+          fit.fit();
+          sessionStore((s) => (size === fontSize ? s.removeItem(FONT_SIZE_KEY) : s.setItem(FONT_SIZE_KEY, size)));
+        }
+        showFontSize();
+      }
+
+      // Next to the title for 2 s, then fades out (and leaves the bar)
+      const fontSizeEl = document.getElementById('font-size');
+      let fontSizeTimer;
+      function showFontSize() {
+        const size = term.options.fontSize;
+        fontSizeEl.textContent = `${size}px` + (size === fontSize ? ' (default)' : '');
+        fontSizeEl.hidden = false;
+        fontSizeEl.classList.add('shown');
+        clearTimeout(fontSizeTimer);
+        fontSizeTimer = setTimeout(() => {
+          fontSizeEl.classList.remove('shown');
+          fontSizeTimer = setTimeout(() => (fontSizeEl.hidden = true), 400);
+        }, 2000);
+      }
+
+      // Cmd/Ctrl + "-", "=" or "+", "0": smaller, larger, configured size (like
+      // Ghostty and browser zoom). Matched on the typed character (e.key), which
+      // follows the layout: "-" is on Digit6 on PC AZERTY, Equal on Mac AZERTY,
+      // Slash on QWERTZ; zooming in needs no Shift with "=" (QWERTY, AZERTY) or
+      // "+" (its own key on QWERTZ). "0" is "à" on AZERTY: also check the key.
+      function fontSizeStep(e) {
+        if (!(isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) || e.altKey) return null;
+        if (e.key === '-' || e.key === '_') return -1;
+        if (e.key === '=' || e.key === '+') return 1;
+        if (e.key === '0' || e.code === 'Digit0' || e.code === 'Numpad0') return 0;
+        return null;
+      }
 
       titleEl.addEventListener('click', startRename);
       term.onTitleChange((title) => {
@@ -856,6 +925,12 @@
         if ((isMac ? e.metaKey : e.ctrlKey) && e.shiftKey && e.code === 'KeyR') {
           e.preventDefault(); // otherwise Cmd+Shift+R reloads the page
           startRename();
+          return true;
+        }
+        const step = fontSizeStep(e);
+        if (step !== null) {
+          e.preventDefault(); // otherwise the browser zooms the page as well
+          setFontSize(step ? term.options.fontSize + step : fontSize);
           return true;
         }
         // ghostty-web swallows Ctrl+V (the "paste" shortcut outside macOS). On macOS,
