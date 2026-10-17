@@ -240,13 +240,17 @@ missing:
 
 **Settings** (*Sine Mods* → mywebterm, or `about:config`, `mywebterm.` prefix): folder name,
 automatic folder creation, leaving the folder when the tab leaves the terminal, terminal
-addresses, shortcut (`Alt+Shift+T` by default, Option+Shift+T on Mac), address to open and reuse
-of the current directory. A tab you take out of the folder yourself isn't put back. Zen pins the
+addresses, shortcut, address to open and reuse of the current directory. The shortcut is one or
+more modifiers, then a letter or digit, joined with `+`: `Cmd`, `Ctrl`, `Alt` (Option on Mac),
+`Shift`, e.g. `Cmd+Shift+T` (default `Alt+Shift+T`). It takes precedence over Zen's own shortcut on
+the same keys. A tab you take out of the folder yourself isn't put back. Zen pins the
 tabs in a folder, and by default `Cmd+W` unloads a pinned tab instead of closing it: to really
 close a terminal, set `zen.pinned-tab-manager.close-shortcut-behavior` to `close`.
 
 **Publishing an update**: edit `zen-mod/`, bump `version` and set `updatedAt` in `theme.json` to
-the current date and time, then push to GitHub. Sine only updates a mod when `updatedAt` is newer
+the current date and time, then push to GitHub. Sine copies the whole repository into the mod
+folder, so the paths under `scripts` in `theme.json` start at the repository root (`zen-mod/…`).
+Sine only updates a mod when `updatedAt` is newer
 than the installed one; it checks when Zen starts (if auto-update is on for the mod in *Sine
 Mods*) or on demand.
 

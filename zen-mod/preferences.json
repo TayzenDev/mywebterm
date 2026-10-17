@@ -31,7 +31,7 @@
   },
   {
     "property": "mywebterm.shortcut",
-    "label": "Shortcut (e.g. Alt+Shift+T, Ctrl+Alt+T; Alt = Option on Mac)",
+    "label": "Shortcut: one or more modifiers, then a letter or digit, joined with +. Modifiers: Cmd (Command), Ctrl, Alt (Option on Mac), Shift. Examples: Cmd+Shift+T, Cmd+Alt+T, Ctrl+Alt+K. It takes precedence over Zen's own shortcut on the same keys.",
     "type": "string",
     "placeholder": "Alt+Shift+T",
     "defaultValue": "Alt+Shift+T"

@@ -4,16 +4,22 @@
   "description": "Moves mywebterm terminal tabs into the Terminal folder of each space and opens a terminal from the keyboard.",
   "homepage": "https://github.com/TayzenDev/mywebterm/tree/main/zen-mod",
   "author": "TayzenDev",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "supportsUnload": true,
   "scripts": {
-    "mywebterm.uc.mjs": {
-      "include": ["chrome://browser/content/browser.xhtml"]
+    "zen-mod/mywebterm.uc.mjs": {
+      "include": [
+        "chrome://browser/content/browser.xhtml"
+      ]
     }
   },
   "preferences": "preferences.json",
-  "tags": ["tabs"],
-  "fork": ["zen"],
+  "tags": [
+    "tabs"
+  ],
+  "fork": [
+    "zen"
+  ],
   "createdAt": "2026-10-17T00:00:00Z",
-  "updatedAt": "2026-10-17T08:44:55Z"
+  "updatedAt": "2026-10-17T09:16:39Z"
 }
