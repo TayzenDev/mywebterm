@@ -140,13 +140,11 @@ async function serveStatic(req, res) {
   }
 }
 
-// Commands in the URL (?c=, ?command=) only run on their own when signed by
-// the page with the token (?sig=): a link from another site or app can't
-// forge one, so the page asks before running it.
-// MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1, or no token, falls back to the
-// Sec-Fetch-Site header: run if the navigation comes from the user (address
-// bar, bookmark, but also a link opened by another app: "none") or from the
-// page itself, otherwise type it at the prompt without submitting it.
+// Commands in the URL (?c=) only run on their own when signed with the token
+// (see "Signed commands" in the page). MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1,
+// or no token, falls back to the Sec-Fetch-Site header: run if the navigation
+// comes from the user (address bar, bookmark, but also a link opened by
+// another app: "none") or from the page itself, otherwise only type it.
 const SIGNED_COMMANDS = !NO_TOKEN && process.env.MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS !== '1';
 
 // The page, for any path that names a directory.
@@ -173,8 +171,7 @@ async function servePage(req, res) {
 // user's config, then reports the current directory at each prompt.
 // The .zshenv also puts the startup command in the input line of the first
 // prompt (and submits it if run).
-// secret: chosen by the page, it authenticates the sequences that announce
-// the running command (see the .zshenv), which program output can't forge.
+// secret: chosen by the page, see the .zshenv.
 const IS_ZSH = SHELL.endsWith('/zsh');
 // Environment passed to shells, without the version of the terminal that
 // started the server (TERM_PROGRAM is replaced)
@@ -238,40 +235,37 @@ function isLocalName(host = '') {
 // Image pasted into the page (the pty only carries text): saved to a temp
 // directory, and its path is pasted instead. Claude Code and other agents
 // recognize a pasted image path and attach it.
-// One directory per shell, created on the first paste (mkdtemp: random name,
-// readable by you only, so no other user can read or pre-create the files),
-// removed when the shell closes or the server stops.
+// Directories made by mkdtemp (random name, readable by you only, so no other
+// user can read or pre-create the files): a root, created on the first
+// paste and removed when the server stops, with one directory per shell,
+// removed when the shell closes.
 const IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
-const pasteDirs = new Set();
-function pasteImage(shell, session, { mime, data, bracketed }) {
+let pasteRoot;
+// Returns the shell's directory, created if dir is not set yet
+function pasteImage(shell, dir, { mime, data, bracketed }) {
   const ext = IMAGE_EXT[mime];
-  if (!ext || typeof data !== 'string') return;
-  if (!session.pasteDir) {
-    session.pasteDir = mkdtempSync(join(os.tmpdir(), 'mywebterm-paste-'));
-    pasteDirs.add(session.pasteDir);
-  }
-  const file = join(session.pasteDir, `${Date.now()}.${ext}`);
+  if (!ext || typeof data !== 'string') return dir;
+  pasteRoot ??= mkdtempSync(join(os.tmpdir(), 'mywebterm-paste-'));
+  dir ??= mkdtempSync(join(pasteRoot, 'tab-'));
+  const file = join(dir, `${Date.now()}.${ext}`);
   writeFileSync(file, Buffer.from(data, 'base64'), { mode: 0o600, flag: 'wx' });
   shell.write(bracketed ? `\x1b[200~${file}\x1b[201~` : file);
+  return dir;
 }
 
-function removePasteDir(dir) {
-  if (!dir) return;
-  rmSync(dir, { recursive: true, force: true });
-  pasteDirs.delete(dir);
+function removeDir(dir) {
+  if (dir) rmSync(dir, { recursive: true, force: true });
 }
-process.on('exit', () => pasteDirs.forEach(removePasteDir));
+process.on('exit', () => removeDir(pasteRoot));
 // Without these handlers, Ctrl+C or a kill skips the "exit" event
 for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
   process.on(signal, () => process.exit(code));
 }
 
 // Window size in cells, sent by the page: a whole number, at most MAX_CELLS,
-// otherwise the fallback. node-pty throws on 0, negative or NaN values (which
-// would crash the server at spawn), and the kernel stores the size on 16 bits
-// (70000 becomes 4464). The largest real case, an 8K or 32:9 screen 7680
-// pixels wide, gives about 2100 columns with a 6px font, 7100 with the
-// browser zoomed out to 30% on top: 10000 leaves room.
+// otherwise the fallback. node-pty throws on 0, negative or NaN, and the
+// kernel keeps 16 bits (70000 becomes 4464). A 7680-pixel-wide screen (8K,
+// 32:9) gives about 7100 columns at its most extreme (6px font, 30% zoom).
 const MAX_CELLS = 10000;
 function cells(value, fallback) {
   const n = Number(value);
@@ -333,8 +327,8 @@ wss.on('connection', (ws, req) => {
   if (command && !IS_ZSH) shell.write(command + (run ? '\r' : ''));
   console.log(`[pty ${shell.pid}] ${SHELL} started in ${cwd || os.homedir()} (${cols}x${rows})`);
 
-  // { pasteDir }: this shell's pasted images
-  const session = {};
+  // This shell's pasted images (see pasteImage)
+  let pasteDir;
 
   shell.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
@@ -356,7 +350,7 @@ wss.on('connection', (ws, req) => {
           return;
         }
         if (ctrl.type === 'image') {
-          pasteImage(shell, session, ctrl);
+          pasteDir = pasteImage(shell, pasteDir, ctrl);
           return;
         }
       } catch {
@@ -368,23 +362,16 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     shell.kill();
-    removePasteDir(session.pasteDir);
+    removeDir(pasteDir);
   });
 });
 
 server.listen(PORT, HOST, () => {
   const address = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
-  if (NO_TOKEN) {
-    console.log(`Terminal available at ${address}`);
-    console.warn('UNSAFE: no token (MYWEBTERM_UNSAFE_NO_TOKEN=1), any local process can open a shell.');
-    console.warn('UNSAFE: commands in the URL are not signed, links from other apps run them.');
-    return;
-  }
-  console.log(`Terminal available at ${address}/#token=${TOKEN}`);
-  console.log(`(token in ${TOKEN_FILE}, asked once per address)`);
-  if (!SIGNED_COMMANDS) {
-    console.warn('UNSAFE: commands in the URL are not signed (MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1), links from other apps run them.');
-  }
+  console.log(`Terminal available at ${address}${NO_TOKEN ? '' : `/#token=${TOKEN}`}`);
+  if (NO_TOKEN) console.warn('UNSAFE: no token (MYWEBTERM_UNSAFE_NO_TOKEN=1), any local process can open a shell.');
+  else console.log(`(token in ${TOKEN_FILE}, asked once per address)`);
+  if (!SIGNED_COMMANDS) console.warn('UNSAFE: commands in the URL are not signed, links from other apps run them.');
 });
 
 // Browsers also resolve localhost and *.localhost (term.localhost) to ::1,

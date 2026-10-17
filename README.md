@@ -158,9 +158,9 @@ ghostty-web only pastes text, and it swallows Ctrl+V. Two ways to give a screens
 (or another agent):
 
 - **Cmd+V**: if the clipboard only holds an image, the page sends it to the server, which saves it
-  in a temporary directory of its own, readable by you only
-  (`$TMPDIR/mywebterm-paste-<random>/<date>.png`), and pastes its path. The directory is removed
-  when the tab's shell ends or the server stops. Claude Code
+  in a temporary directory readable by you only
+  (`$TMPDIR/mywebterm-paste-<random>/tab-<random>/<date>.png`) and pastes its path. The tab's
+  directory is removed when its shell ends, the whole tree when the server stops. Claude Code
   recognizes a pasted image path and attaches it.
 - **Ctrl+V** (macOS): forwarded to the program, as in Ghostty. Claude Code then reads the Mac
   clipboard itself.
