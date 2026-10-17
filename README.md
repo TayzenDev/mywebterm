@@ -39,9 +39,17 @@ the page or bookmarking it reopens the shell in the same place.
 `http://127.0.0.1:8080/~/Dev/project?c=htop`. It stays in the history, and you get the shell back
 when it exits.
 
-It only runs automatically if you opened the tab yourself: address bar, bookmark, or a link from
-the terminal itself (`Sec-Fetch-Site` header). When opened from another site, it is only typed:
-press Enter to run it, Ctrl+C to cancel.
+It only runs automatically if the URL carries a valid `?sig=`: the page signs every `?c=` it writes
+with your token (HMAC, bound to the URL's directory), so reloads, bookmarks and restored tabs run
+as before. A command without a valid signature (a link from another site, Slack, an email, or a URL
+typed by hand) is never typed into the shell: the page shows it and asks first. Run signs it, Ignore
+drops it from the URL. The signature needs a secure context (`localhost`, `*.localhost`,
+127.0.0.1): on another `ALLOWED_HOSTS` name over http, every command asks first.
+
+`MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1`, or running without a token, turns signatures off. A command
+then runs automatically if you opened the tab yourself (address bar, bookmark, a link from the
+terminal itself, but also a link opened from another app, such as Slack or Mail: `Sec-Fetch-Site`
+header); when opened from another site, it is only typed: press Enter to run it, Ctrl+C to cancel.
 
 After that, `?c=` follows the running program if it is in the `PROGRAMS` table (htop, vim,
 lazygit, tmux, ssh, claude…): reloading the page or bookmarking it starts it again. The parameter
@@ -145,7 +153,9 @@ ghostty-web only pastes text, and it swallows Ctrl+V. Two ways to give a screens
 (or another agent):
 
 - **Cmd+V**: if the clipboard only holds an image, the page sends it to the server, which saves it
-  in the temporary directory (`$TMPDIR/mywebterm-paste-<date>.png`) and pastes its path. Claude Code
+  in a temporary directory of its own, readable by you only
+  (`$TMPDIR/mywebterm-paste-<random>/<date>.png`), and pastes its path. The directory is removed
+  when the tab's shell ends or the server stops. Claude Code
   recognizes a pasted image path and attaches it.
 - **Ctrl+V** (macOS): forwarded to the program, as in Ghostty. Claude Code then reads the Mac
   clipboard itself.
@@ -287,13 +297,14 @@ browser (ghostty-web)  ⇄  WebSocket /pty  ⇄  server.js (node-pty)  ⇄  zsh
 
 ## Configuration
 
-| Variable                    | Default     | Purpose                                                                         |
-| --------------------------- | ----------- | ------------------------------------------------------------------------------- |
-| `PORT`                      | `8080`      | HTTP port                                                                       |
-| `MYWEBTERM_HOST`            | `127.0.0.1` | Listening interface (not `HOST`: zsh uses that name for the machine's name)     |
-| `SHELL`                     | `$SHELL`    | Shell to start                                                                  |
-| `ALLOWED_HOSTS`             |             | Comma-separated names accepted besides `localhost`, `*.localhost` and 127.0.0.1 |
-| `MYWEBTERM_UNSAFE_NO_TOKEN` |             | `1`: no access token (see Security). Refused unless listening on the loopback   |
+| Variable                             | Default     | Purpose                                                                         |
+| ------------------------------------ | ----------- | ------------------------------------------------------------------------------- |
+| `PORT`                               | `8080`      | HTTP port                                                                       |
+| `MYWEBTERM_HOST`                     | `127.0.0.1` | Listening interface (not `HOST`: zsh uses that name for the machine's name)     |
+| `SHELL`                              | `$SHELL`    | Shell to start                                                                  |
+| `ALLOWED_HOSTS`                      |             | Comma-separated names accepted besides `localhost`, `*.localhost` and 127.0.0.1 |
+| `MYWEBTERM_UNSAFE_NO_TOKEN`          |             | `1`: no access token (see Security). Refused unless listening on the loopback   |
+| `MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS` |             | `1`: commands in the URL run without a signature (see Run a command)            |
 
 ## Security
 
@@ -307,6 +318,12 @@ This server gives full shell access to the machine.
   `localStorage`, which is per origin and port: other servers on localhost don't see it.
 - `MYWEBTERM_UNSAFE_NO_TOKEN=1` turns the token off: no address to open first, but any local
   process can then open a shell as you. The Origin, Host and frame checks still apply to browsers.
+- Commands in the URL only run on their own when signed with the token (see
+  [Run a command](#run-a-command)): otherwise a link from Slack or an email would run any command.
+  `MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1` turns this off; so does `MYWEBTERM_UNSAFE_NO_TOKEN=1`.
+- Pasted text goes through bracketed paste when the program asks for it (zsh does), with the
+  markers removed from the text: a line break copied from a web page doesn't run anything on its
+  own.
 - The page refuses to be shown in a frame (`frame-ancestors 'none'`): otherwise a site could load
   the terminal in an invisible iframe and make you type into it.
 - WebSocket connections from another origin are rejected. Without this check, any site open in the

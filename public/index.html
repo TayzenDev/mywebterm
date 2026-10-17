@@ -77,6 +77,48 @@
       #notify-btn[hidden] {
         display: none;
       }
+      #confirm {
+        position: fixed;
+        top: 15%;
+        left: 50%;
+        transform: translateX(-50%);
+        box-sizing: border-box;
+        width: min(36rem, calc(100% - 32px));
+        padding: 12px 16px;
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--fg) 8%, var(--bg));
+        color: var(--fg);
+        font: 13px system-ui, sans-serif;
+      }
+      #confirm p {
+        margin: 0 0 8px;
+      }
+      #confirm pre {
+        margin: 0 0 8px;
+        padding: 8px;
+        max-height: 40vh;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        border-radius: 4px;
+        background: var(--bg);
+        font: 12px ui-monospace, monospace;
+      }
+      #confirm div {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      #confirm button {
+        font: inherit;
+        color: inherit;
+        background: var(--bg);
+        border: 1px solid color-mix(in srgb, var(--fg) 30%, var(--bg));
+        border-radius: 4px;
+        padding: 4px 12px;
+        cursor: pointer;
+      }
       #title-input {
         font: inherit;
         color: inherit;
@@ -124,6 +166,69 @@
         token ||= localStorage.getItem(TOKEN_KEY);
       } catch {
         // storage blocked
+      }
+
+      // --- Signed commands ---------------------------------------------------
+      // A command in the URL (?c=) only runs on its own if ?sig= is its HMAC
+      // with the token, bound to the URL path (the directory it runs in). The
+      // page signs every ?c= it writes, so reloads and bookmarks run as
+      // before; a link from another site or app can't forge the signature,
+      // so the page asks first. Off with MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS or
+      // without a token (see servePage in server.js).
+      // crypto.subtle needs a secure context: localhost, *.localhost and
+      // 127.0.0.1 are; another ALLOWED_HOSTS name over http is not, and every
+      // command there asks first.
+      const SIGNED_COMMANDS = document.documentElement.dataset.launch === 'signed';
+      let signingKey;
+      async function signCommand(command, path = new URL(location.href).pathname) {
+        if (!token || !crypto.subtle) return '';
+        const encoder = new TextEncoder();
+        signingKey ??= crypto.subtle.importKey('raw', encoder.encode(token), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const mac = await crypto.subtle.sign('HMAC', await signingKey, encoder.encode(`mywebterm-command\n${path}\n${command}`));
+        return btoa(String.fromCharCode(...new Uint8Array(mac))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      }
+
+      // Asks whether to run an unsigned command, outside the terminal so that
+      // nothing typed there can run it. Resolves to true (Run) or false
+      // (Ignore, Escape). The focus starts on Ignore: Enter doesn't run it.
+      function confirmCommand(command) {
+        const box = document.createElement('div');
+        box.id = 'confirm';
+        box.setAttribute('role', 'alertdialog');
+        const intro = document.createElement('p');
+        intro.textContent = 'This address asks to run a command:';
+        const code = document.createElement('pre');
+        code.textContent = command;
+        const warning = document.createElement('p');
+        warning.textContent = 'It may come from another site or app. Only run it if you know where it comes from.';
+        const buttons = document.createElement('div');
+        const ignore = document.createElement('button');
+        ignore.textContent = 'Ignore';
+        const run = document.createElement('button');
+        run.textContent = 'Run';
+        buttons.append(ignore, run);
+        box.append(intro, code, warning, buttons);
+        document.body.append(box);
+        ignore.focus();
+        // ghostty-web takes the focus back when it opens: keep it here
+        const keepFocus = (e) => {
+          if (!box.contains(e.target)) ignore.focus();
+        };
+        document.addEventListener('focusin', keepFocus);
+        requestAnimationFrame(() => ignore.focus());
+        return new Promise((resolve) => {
+          const done = (answer) => {
+            document.removeEventListener('focusin', keepFocus);
+            box.remove();
+            resolve(answer);
+          };
+          ignore.addEventListener('click', () => done(false));
+          run.addEventListener('click', () => done(true));
+          box.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Escape') done(false);
+          });
+        });
       }
 
       // The URL path is the starting directory: /~/Dev/project, /Users/me/Dev…
@@ -334,8 +439,15 @@
 
       // Running program → ?c=: a reload or a bookmark relaunches it.
       // Empty string = back at the prompt, the parameter is removed.
-      function setUrlCommand(commandLine) {
-        setUrlParams({ command: '', c: commandLine.trim(), t: commandLine ? undefined : '' });
+      // Signed in ?sig= (see Signed commands); signing is async, so only the
+      // latest call updates the URL.
+      let urlCommandCall = 0;
+      async function setUrlCommand(commandLine) {
+        const call = ++urlCommandCall;
+        const c = commandLine.trim();
+        const sig = c && SIGNED_COMMANDS ? await signCommand(c) : '';
+        if (call !== urlCommandCall) return;
+        setUrlParams({ command: '', c, sig, t: c ? undefined : '' });
       }
 
       // Title of the running AI agent → ?t=, next to its command in ?c=
@@ -400,7 +512,7 @@
             const commandLine = args.join(';');
             const { program, args: programArgs } = parseCommand(commandLine);
             const entry = PROGRAMS[program];
-            setUrlCommand(entry && entry.inUrl !== false ? commandLine : '');
+            const urlUpdated = setUrlCommand(entry && entry.inUrl !== false ? commandLine : '');
             runningProgram = entry && {
               label: entry.title === 'ssh' ? sshLabel(programArgs) : program,
               keepsOwnTitle: entry.title === 'own',
@@ -408,7 +520,8 @@
               ownTitle: entry.title === 'own' && commandLine.trim() === restoredCommand.trim() ? restoredOwnTitle : '',
               icon: entry.icon,
             };
-            if (runningProgram?.ownTitle) setUrlOwnTitle(runningProgram.ownTitle);
+            // Once ?c= is set (setUrlOwnTitle needs it)
+            urlUpdated.then(() => runningProgram?.ownTitle && setUrlOwnTitle(runningProgram.ownTitle));
             renderTitle();
           }
           // AI agent started with a session ID: its resume command
@@ -542,6 +655,12 @@
         return found;
       }
 
+      // A sequence split across messages is held until its end, at most this
+      // long: ours are a few hundred bytes (a kitty chunk at most 4 KiB).
+      // Beyond, its content is shown as plain text, so that a sequence that
+      // never ends (binary file, hostile output) can't freeze the display.
+      const MAX_PENDING = 64 * 1024;
+
       function extractCommands(data) {
         data = pending + data;
         pending = '';
@@ -549,16 +668,34 @@
         let seq;
         while ((seq = findSequence(data))) {
           out += data.slice(0, seq.start);
-          // End of sequence: BEL or ESC \
           const rest = data.slice(seq.start + seq.prefix.length);
-          const match = /\x07|\x1b\\/.exec(rest);
-          if (!match) {
-            // Sequence split across two messages: wait for the rest
+          // End: BEL or ESC \. As in terminals, an ESC followed by anything
+          // else, CAN or SUB cancels the sequence.
+          const end = /[\x07\x18\x1a\x1b]/.exec(rest);
+          const incomplete = !end || (rest[end.index] === '\x1b' && end.index === rest.length - 1);
+          if (incomplete) {
+            // Split across messages (possibly between ESC and \): wait for the rest
+            if (rest.length > MAX_PENDING) return out + rest;
             pending = data.slice(seq.start);
             return out;
           }
-          HANDLERS[seq.prefix](rest.slice(0, match.index));
-          data = rest.slice(match.index + match[0].length);
+          if (rest[end.index] === '\x07') {
+            HANDLERS[seq.prefix](rest.slice(0, end.index));
+            data = rest.slice(end.index + 1);
+          } else if (rest.startsWith('\x1b\\', end.index)) {
+            HANDLERS[seq.prefix](rest.slice(0, end.index));
+            data = rest.slice(end.index + 2);
+          } else {
+            // Cancelled: drop it, what follows is handled normally
+            data = rest.slice(end.index);
+          }
+        }
+        // A message can also end in the middle of a prefix ("\x1b]67"): keep
+        // that tail for the next one
+        const tail = data.lastIndexOf('\x1b');
+        if (tail !== -1 && Object.keys(HANDLERS).some((prefix) => prefix.length > data.length - tail && prefix.startsWith(data.slice(tail)))) {
+          pending = data.slice(tail);
+          return out + data.slice(0, tail);
         }
         return out + data;
       }
@@ -661,11 +798,27 @@
 
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const params = new URLSearchParams({ cols: term.cols, rows: term.rows, cwd: cwdPath });
-      // Startup command (?command= or ?c=), typed at the first prompt. Only
-      // submitted if the server deems the navigation safe (see servePage).
+      // Startup command (?command= or ?c=), put at the first prompt.
+      // - Signed commands: runs if signed, otherwise only once confirmed;
+      //   declined, it is dropped from the URL and never typed.
+      // - Otherwise: submitted if the server deems the navigation safe, only
+      //   typed if not (see servePage).
       const query = new URLSearchParams(location.search);
       const startupCommand = query.get('command') ?? query.get('c');
-      if (startupCommand) {
+      if (startupCommand && SIGNED_COMMANDS) {
+        const sig = query.get('sig');
+        let run = Boolean(sig) && sig === (await signCommand(startupCommand, location.pathname));
+        if (!run) {
+          run = await confirmCommand(startupCommand);
+          term.focus();
+          // Signed now (a reload runs it again), or removed from the URL
+          await setUrlCommand(run ? startupCommand : '');
+        }
+        if (run) {
+          params.set('command', startupCommand);
+          params.set('run', '1');
+        }
+      } else if (startupCommand) {
         params.set('command', startupCommand);
         if (document.documentElement.dataset.launch === 'run') params.set('run', '1');
       }
@@ -706,11 +859,25 @@
       term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       });
-      // ghostty-web only pastes text. An image on its own (screenshot) goes to the
-      // server, which saves it and pastes its path: Claude Code then attaches it.
+      // Pastes are handled here, before ghostty-web, which sends text as is.
+      // - Text: through term.paste(), which wraps it in bracketed paste
+      //   markers when the program asked for them (zsh does): a line break
+      //   copied from a web page then doesn't run anything on its own. The
+      //   markers are removed from the text, otherwise "…\e[201~rm -rf ~\r"
+      //   would end the paste early and run the rest.
+      // - An image on its own (screenshot) goes to the server, which saves it
+      //   and pastes its path: Claude Code then attaches it.
       document.getElementById('terminal').addEventListener('paste', (e) => {
         const items = [...(e.clipboardData?.items ?? [])];
-        if (items.some((item) => item.type === 'text/plain')) return;
+        if (items.some((item) => item.type === 'text/plain')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          let text = e.clipboardData.getData('text/plain');
+          // Until none is left: removing one can join the halves of another
+          while (/\x1b\[20[01]~/.test(text)) text = text.replace(/\x1b\[20[01]~/g, '');
+          if (text) term.paste(text);
+          return;
+        }
         const image = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
         if (!image) return;
         e.preventDefault();

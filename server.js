@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -132,14 +132,19 @@ async function serveStatic(req, res) {
   }
 }
 
-// The page, for any path that names a directory. A link on another site can
-// open http://localhost:8080/?command=…: the command only runs right away if
-// the navigation comes from the user (address bar, bookmark: "none") or from
-// the page itself. Otherwise the page just types it at the prompt without
-// submitting it.
+// Commands in the URL (?c=, ?command=) only run on their own when signed by
+// the page with the token (?sig=): a link from another site or app can't
+// forge one, so the page asks before running it.
+// MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1, or no token, falls back to the
+// Sec-Fetch-Site header: run if the navigation comes from the user (address
+// bar, bookmark, but also a link opened by another app: "none") or from the
+// page itself, otherwise type it at the prompt without submitting it.
+const SIGNED_COMMANDS = !NO_TOKEN && process.env.MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS !== '1';
+
+// The page, for any path that names a directory.
 async function servePage(req, res) {
   const site = req.headers['sec-fetch-site'];
-  const launch = site === 'none' || site === 'same-origin' ? 'run' : 'type';
+  const launch = SIGNED_COMMANDS ? 'signed' : site === 'none' || site === 'same-origin' ? 'run' : 'type';
   try {
     const html = await readFile(join(PUBLIC_DIR, 'index.html'), 'utf8');
     res.writeHead(200, {
@@ -219,16 +224,47 @@ function isLocalName(host = '') {
     || name === '127.0.0.1' || name === '[::1]' || ALLOWED_HOSTS.includes(name);
 }
 
-// Image pasted into the page (the pty only carries text): saved to the temp
+// Image pasted into the page (the pty only carries text): saved to a temp
 // directory, and its path is pasted instead. Claude Code and other agents
 // recognize a pasted image path and attach it.
+// One directory per shell, created on the first paste (mkdtemp: random name,
+// readable by you only, so no other user can read or pre-create the files),
+// removed when the shell closes or the server stops.
 const IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
-function pasteImage(shell, { mime, data, bracketed }) {
+const pasteDirs = new Set();
+function pasteImage(shell, session, { mime, data, bracketed }) {
   const ext = IMAGE_EXT[mime];
   if (!ext || typeof data !== 'string') return;
-  const file = join(os.tmpdir(), `mywebterm-paste-${Date.now()}.${ext}`);
-  writeFileSync(file, Buffer.from(data, 'base64'));
+  if (!session.pasteDir) {
+    session.pasteDir = mkdtempSync(join(os.tmpdir(), 'mywebterm-paste-'));
+    pasteDirs.add(session.pasteDir);
+  }
+  const file = join(session.pasteDir, `${Date.now()}.${ext}`);
+  writeFileSync(file, Buffer.from(data, 'base64'), { mode: 0o600, flag: 'wx' });
   shell.write(bracketed ? `\x1b[200~${file}\x1b[201~` : file);
+}
+
+function removePasteDir(dir) {
+  if (!dir) return;
+  rmSync(dir, { recursive: true, force: true });
+  pasteDirs.delete(dir);
+}
+process.on('exit', () => pasteDirs.forEach(removePasteDir));
+// Without these handlers, Ctrl+C or a kill skips the "exit" event
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+  process.on(signal, () => process.exit(code));
+}
+
+// Window size in cells, sent by the page: a whole number, at most MAX_CELLS,
+// otherwise the fallback. node-pty throws on 0, negative or NaN values (which
+// would crash the server at spawn), and the kernel stores the size on 16 bits
+// (70000 becomes 4464). The largest real case, an 8K or 32:9 screen 7680
+// pixels wide, gives about 2100 columns with a 6px font, 7100 with the
+// browser zoomed out to 30% on top: 10000 leaves room.
+const MAX_CELLS = 10000;
+function cells(value, fallback) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, MAX_CELLS) : fallback;
 }
 
 // Close code for a missing or wrong token: the page then asks for it again
@@ -240,8 +276,8 @@ wss.on('connection', (ws, req) => {
     ws.close(CLOSE_BAD_TOKEN, 'invalid token');
     return;
   }
-  const cols = Number(url.searchParams.get('cols')) || 80;
-  const rows = Number(url.searchParams.get('rows')) || 24;
+  const cols = cells(url.searchParams.get('cols'), 80);
+  const rows = cells(url.searchParams.get('rows'), 24);
   // No control characters: the path is echoed back in the terminal
   const wanted = (url.searchParams.get('cwd') || '/').replace(/[\x00-\x1f\x7f]/g, '');
   const cwd = resolveCwd(wanted);
@@ -275,6 +311,9 @@ wss.on('connection', (ws, req) => {
   if (command && !IS_ZSH) shell.write(command + (run ? '\r' : ''));
   console.log(`[pty ${shell.pid}] ${SHELL} started in ${cwd || os.homedir()} (${cols}x${rows})`);
 
+  // { pasteDir }: this shell's pasted images
+  const session = {};
+
   shell.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
   });
@@ -291,11 +330,11 @@ wss.on('connection', (ws, req) => {
       try {
         const ctrl = JSON.parse(msg);
         if (ctrl.type === 'resize') {
-          shell.resize(ctrl.cols, ctrl.rows);
+          shell.resize(cells(ctrl.cols, shell.cols), cells(ctrl.rows, shell.rows));
           return;
         }
         if (ctrl.type === 'image') {
-          pasteImage(shell, ctrl);
+          pasteImage(shell, session, ctrl);
           return;
         }
       } catch {
@@ -305,7 +344,10 @@ wss.on('connection', (ws, req) => {
     shell.write(msg);
   });
 
-  ws.on('close', () => shell.kill());
+  ws.on('close', () => {
+    shell.kill();
+    removePasteDir(session.pasteDir);
+  });
 });
 
 server.listen(PORT, HOST, () => {
@@ -313,10 +355,14 @@ server.listen(PORT, HOST, () => {
   if (NO_TOKEN) {
     console.log(`Terminal available at ${address}`);
     console.warn('UNSAFE: no token (MYWEBTERM_UNSAFE_NO_TOKEN=1), any local process can open a shell.');
+    console.warn('UNSAFE: commands in the URL are not signed, links from other apps run them.');
     return;
   }
   console.log(`Terminal available at ${address}/#token=${TOKEN}`);
   console.log(`(token in ${TOKEN_FILE}, asked once per address)`);
+  if (!SIGNED_COMMANDS) {
+    console.warn('UNSAFE: commands in the URL are not signed (MYWEBTERM_UNSAFE_UNSIGNED_COMMANDS=1), links from other apps run them.');
+  }
 });
 
 // Browsers also resolve localhost and *.localhost (term.localhost) to ::1,
