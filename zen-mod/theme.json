@@ -1,0 +1,19 @@
+{
+  "id": "mywebterm",
+  "name": "mywebterm",
+  "description": "Range les onglets du terminal mywebterm dans le dossier « Terminal » de chaque espace et ouvre un terminal au clavier.",
+  "homepage": "https://github.com/TayzenDev/mywebterm/tree/main/zen-mod",
+  "author": "Benjamin Peltier",
+  "version": "1.0.0",
+  "supportsUnload": true,
+  "scripts": {
+    "mywebterm.uc.mjs": {
+      "include": ["chrome://browser/content/browser.xhtml"]
+    }
+  },
+  "preferences": "preferences.json",
+  "tags": ["tabs"],
+  "fork": ["zen"],
+  "createdAt": "2026-10-17T00:00:00Z",
+  "updatedAt": "2026-10-17T00:00:00Z"
+}

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Renomme l'onglet mywebterm courant. Sans argument : revient au titre automatique.
+# La séquence OSC privée est interceptée par la page, elle n'atteint jamais le terminal.
+printf '\033]6767;title;%s\007' "$*"

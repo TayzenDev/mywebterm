@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "mywebterm",
+  "version": "0.4.0",
+  "description": "Range les onglets du terminal mywebterm dans un groupe d'onglets et ouvre un terminal au clavier.",
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": [
+      "defaults.js",
+      "background.js"
+    ]
+  },
+  "options_ui": {
+    "page": "options.html"
+  },
+  "commands": {
+    "open-terminal": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Ouvrir un terminal"
+    }
+  },
+  "minimum_chrome_version": "102",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "mywebterm-tab-group@local",
+      "strict_min_version": "139.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  }
+}

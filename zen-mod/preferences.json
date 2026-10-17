@@ -1,0 +1,52 @@
+[
+  {
+    "property": "mywebterm.folder-name",
+    "label": "Nom du dossier où ranger les terminaux (un par espace)",
+    "type": "string",
+    "placeholder": "Terminal",
+    "defaultValue": "Terminal"
+  },
+  {
+    "property": "mywebterm.create-folder",
+    "label": "Créer le dossier dans l'espace s'il n'existe pas (sinon l'onglet reste où il est)",
+    "type": "checkbox",
+    "defaultValue": false
+  },
+  {
+    "property": "mywebterm.leave-folder",
+    "label": "Sortir du dossier un onglet qui quitte le terminal pour un autre site",
+    "type": "checkbox",
+    "defaultValue": true
+  },
+  {
+    "property": "mywebterm.hosts",
+    "label": "Adresses du terminal (hôte:port, séparés par des virgules ; *.localhost accepte les sous-domaines)",
+    "type": "string",
+    "placeholder": "127.0.0.1:8080, localhost:8080, term.localhost:8080, term.localhost",
+    "defaultValue": "127.0.0.1:8080, localhost:8080, term.localhost:8080, term.localhost"
+  },
+  {
+    "type": "separator",
+    "label": "Ouvrir un terminal au clavier"
+  },
+  {
+    "property": "mywebterm.shortcut",
+    "label": "Raccourci (ex. Alt+Shift+T, Ctrl+Alt+T ; Alt = Option sur Mac)",
+    "type": "string",
+    "placeholder": "Alt+Shift+T",
+    "defaultValue": "Alt+Shift+T"
+  },
+  {
+    "property": "mywebterm.open-url",
+    "label": "Adresse ouverte",
+    "type": "string",
+    "placeholder": "http://term.localhost/",
+    "defaultValue": "http://term.localhost/"
+  },
+  {
+    "property": "mywebterm.inherit-cwd",
+    "label": "Depuis un terminal, ouvrir le nouveau dans le même dossier",
+    "type": "checkbox",
+    "defaultValue": true
+  }
+]

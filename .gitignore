@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+# Extension signée par « web-ext sign » (README)
+web-ext-artifacts/

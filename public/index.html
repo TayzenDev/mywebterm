@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mywebterm</title>
+    <link rel="icon" id="favicon" />
+    <style>
+      /* Remplacées au chargement par les valeurs de la config Ghostty */
+      :root {
+        --bg: #1a1b26;
+        --fg: #a9b1d6;
+        --accent: #7aa2f7;
+        --pad-x: 8px;
+        --pad-y: 8px;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+      }
+      /* Ghostty n'épaissit pas le texte (font-thicken = false par défaut) alors
+         que les navigateurs macOS le font, y compris dans le canvas du terminal. */
+      body.thin {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      #terminal {
+        /* ghostty-web rend ce conteneur éditable : sans ça, Firefox y affiche un
+           curseur de saisie qui clignote en haut à gauche */
+        caret-color: transparent;
+        /* Pendant une composition (touche morte ^, ¨…), le navigateur insère le
+           texte provisoire directement dans ce conteneur, avant le canvas : il
+           s'affiche en haut à gauche et décale le rendu. Le texte du conteneur
+           ne doit donc occuper aucune place ni être visible (la police du
+           terminal est passée à ghostty-web, elle n'hérite pas d'ici). */
+        font-size: 0;
+        line-height: 0;
+        color: transparent;
+        outline: none;
+        position: fixed;
+        inset: 0;
+        padding: var(--pad-y) var(--pad-x);
+      }
+      #bar {
+        position: fixed;
+        top: 6px;
+        right: 10px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font: 12px system-ui, sans-serif;
+        color: var(--fg);
+        opacity: 0.5;
+        transition: opacity 0.15s;
+      }
+      #bar:hover,
+      #bar:focus-within {
+        opacity: 1;
+      }
+      #title {
+        cursor: text;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg) 12%, var(--bg));
+      }
+      #notify-btn {
+        font: inherit;
+        color: inherit;
+        background: color-mix(in srgb, var(--fg) 12%, var(--bg));
+        border: none;
+        border-radius: 4px;
+        padding: 2px 6px;
+        cursor: pointer;
+      }
+      #notify-btn[hidden] {
+        display: none;
+      }
+      #title-input {
+        font: inherit;
+        color: inherit;
+        background: color-mix(in srgb, var(--fg) 12%, var(--bg));
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        padding: 1px 5px;
+        outline: none;
+        width: 16em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="terminal"></div>
+    <div id="bar">
+      <span id="status">connexion…</span>
+      <button id="notify-btn" hidden title="Être prévenu quand un agent a fini ou pose une question">🔔 Activer les notifications</button>
+      <span id="title" title="Renommer (Ctrl+Shift+R)"></span>
+    </div>
+
+    <script type="module">
+      import { init, Terminal, FitAddon } from '/ghostty-web/ghostty-web.js';
+
+      const statusEl = document.getElementById('status');
+      const titleEl = document.getElementById('title');
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+      titleEl.title = `Renommer (${isMac ? 'Cmd' : 'Ctrl'}+Shift+R)`;
+
+      // Le chemin de l'URL est le dossier de départ : /~/Dev/projet, /Users/moi/Dev…
+      const cwdPath = decodeURIComponent(location.pathname);
+
+      // --- Titre de l'onglet -------------------------------------------------
+      // Priorité : nom choisi à la main (gardé dans ?title=) > programme en cours
+      // parmi PROGRAMS > titre automatique. Le titre automatique part du
+      // dossier de l'URL, puis suit le dernier signal du shell : changement de
+      // dossier (OSC 7) ou titre explicite (OSC 0/2).
+      let manualTitle = new URLSearchParams(location.search).get('title') || '';
+      // { label, keepsOwnTitle, ownTitle, icon } du programme en cours, ou null
+      let runningProgram = null;
+      // Titre de l'agent IA relancé par ?c=, gardé dans ?t= : affiché dès son
+      // démarrage, avant qu'il renvoie le sien
+      const restoredOwnTitle = new URLSearchParams(location.search).get('t') || '';
+      const restoredCommand = new URLSearchParams(location.search).get('c') || '';
+      let autoTitle = restoredOwnTitle || cwdPath.replace(/\/+$/, '').split('/').pop() || '~';
+      let home = '';
+
+      function setAutoTitle(title) {
+        autoTitle = title;
+        renderTitle();
+      }
+
+      function renderTitle() {
+        const program = runningProgram && (runningProgram.ownTitle || runningProgram.label);
+        const title = manualTitle || program || autoTitle;
+        // « ● » : notification pas encore vue (voir Notifications)
+        document.title = unread ? `● ${title}` : title;
+        titleEl.textContent = title;
+        renderFavicon(runningProgram?.icon);
+      }
+
+      // --- Favicon -----------------------------------------------------------
+      // Invite de commande aux couleurs du thème par défaut, logo ou emoji du
+      // programme en cours sinon, avec une pastille tant qu'une notification n'a
+      // pas été vue. Converti en PNG : Safari ignore les favicons SVG.
+      const faviconEl = document.getElementById('favicon');
+      const faviconCache = new Map();
+      let faviconColors = { bg: '#1a1b26', fg: '#a9b1d6', accent: '#9ece6a', badge: '#f7768e' };
+      let currentIcon;
+
+      function svgUrl(svg) {
+        return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+      }
+
+      function iconSource(icon) {
+        if (!icon) {
+          const { bg, fg, accent } = faviconColors;
+          return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+            <rect width="32" height="32" rx="7" fill="${bg}" stroke="${fg}" stroke-opacity=".35"/>
+            <path d="M8 10l6 6-6 6" fill="none" stroke="${accent}" stroke-width="3"
+              stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M16 23h8" stroke="${fg}" stroke-width="3" stroke-linecap="round"/>
+          </svg>`);
+        }
+        if (/^[a-z0-9]+$/.test(icon)) return `/icons/${icon}.svg`;
+        return svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+          <text x="16" y="17" font-size="26" text-anchor="middle" dominant-baseline="central">${icon}</text>
+        </svg>`);
+      }
+
+      async function renderFavicon(icon) {
+        const key = (icon || `default:${Object.values(faviconColors)}`) + (unread ? ':unread' : '');
+        if (key === currentIcon) return;
+        currentIcon = key;
+        if (!faviconCache.has(key)) {
+          const img = new Image();
+          img.src = iconSource(icon);
+          try {
+            await img.decode();
+          } catch {
+            return; // logo introuvable : on garde l'icône actuelle
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 64;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, 64, 64);
+          if (unread) {
+            ctx.beginPath();
+            ctx.arc(50, 14, 13, 0, 2 * Math.PI);
+            ctx.fillStyle = faviconColors.badge;
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = faviconColors.bg;
+            ctx.stroke();
+          }
+          faviconCache.set(key, canvas.toDataURL('image/png'));
+        }
+        // Un autre changement a pu arriver pendant le chargement
+        if (currentIcon === key) faviconEl.href = faviconCache.get(key);
+      }
+
+      // --- Notifications -----------------------------------------------------
+      // Envoyées par les séquences OSC 9, 777 et 99 (agents IA, commande
+      // `notify`, bin/claude-notify-hook). Seulement si l'onglet n'est pas sous
+      // les yeux (onglet caché ou fenêtre en arrière-plan) : notification du
+      // navigateur, plus « ● » devant le titre et une pastille sur le favicon
+      // jusqu'au retour sur l'onglet, même sans permission.
+      const notifyBtn = document.getElementById('notify-btn');
+      // Une notification à la fois par onglet : la suivante remplace la précédente
+      const notificationTag = `mywebterm-${Math.random().toString(36).slice(2)}`;
+      let unread = false;
+      let notification = null;
+
+      function watched() {
+        return document.visibilityState === 'visible' && document.hasFocus();
+      }
+
+      // title : « Claude a terminé »… ; vide = titre de l'onglet seul
+      function notify(title, body) {
+        if (watched()) return;
+        if (!unread) {
+          unread = true;
+          renderTitle();
+        }
+        if (!('Notification' in window) || Notification.permission !== 'granted') return;
+        const tabTitle = titleEl.textContent;
+        const n = new Notification(title ? `${title} · ${tabTitle}` : tabTitle, {
+          body,
+          tag: notificationTag,
+          renotify: true,
+          icon: faviconEl.href || undefined,
+        });
+        n.onclick = () => {
+          window.focus();
+          n.close();
+        };
+        notification = n;
+      }
+
+      function markRead() {
+        if (!watched()) return;
+        notification?.close();
+        notification = null;
+        if (!unread) return;
+        unread = false;
+        renderTitle();
+      }
+      window.addEventListener('focus', markRead);
+      document.addEventListener('visibilitychange', markRead);
+
+      // Safari et Firefox n'accordent la permission que sur un geste de
+      // l'utilisateur : bouton affiché tant qu'elle n'a été ni accordée ni refusée
+      function renderNotifyButton() {
+        notifyBtn.hidden = !('Notification' in window) || Notification.permission !== 'default';
+      }
+      notifyBtn.addEventListener('click', async () => {
+        await Notification.requestPermission();
+        renderNotifyButton();
+        document.getElementById('terminal').focus();
+      });
+      renderNotifyButton();
+
+      // kitty : ESC ] 99 ; i=1:d=0:p=title ; <texte>. Titre et corps peuvent
+      // arriver en plusieurs séquences (d=0 : à suivre), en base64 si e=1.
+      // Le reste du protocole (icônes, boutons, requêtes p=?) est ignoré.
+      const kittyPending = new Map();
+      function kittyNotification(payload) {
+        const sep = payload.indexOf(';');
+        if (sep === -1) return;
+        const meta = Object.fromEntries(
+          payload.slice(0, sep).split(':').filter(Boolean).map((pair) => pair.split('=')),
+        );
+        if (meta.p === '?') return;
+        let text = payload.slice(sep + 1);
+        if (meta.e === '1') {
+          try {
+            text = new TextDecoder().decode(Uint8Array.from(atob(text), (c) => c.charCodeAt(0)));
+          } catch {
+            return;
+          }
+        }
+        const id = meta.i ?? '';
+        const parts = kittyPending.get(id) ?? { title: '', body: '' };
+        const kind = meta.p ?? 'title';
+        if (kind === 'title' || kind === 'body') parts[kind] += text;
+        if (meta.d === '0') {
+          kittyPending.set(id, parts);
+          return;
+        }
+        kittyPending.delete(id);
+        if (parts.body) notify(parts.title, parts.body);
+        else if (parts.title) notify('', parts.title);
+      }
+
+      // Chaîne vide = retour au titre automatique
+      function setManualTitle(title) {
+        manualTitle = title.trim();
+        const url = new URL(location.href);
+        if (manualTitle) url.searchParams.set('title', manualTitle);
+        else url.searchParams.delete('title');
+        history.replaceState(null, '', url);
+        renderTitle();
+      }
+
+      // Dossier courant → chemin de l'URL (/~/… sous le home), pour qu'un
+      // rechargement ou un favori rouvre le shell au même endroit.
+      // La racine reste « / » : ce chemin-là désigne le home.
+      function setUrlPath(dir) {
+        if (!dir) return;
+        const relative = dir === home ? '~' : dir.startsWith(`${home}/`) ? `~${dir.slice(home.length)}` : dir.slice(1);
+        const url = new URL(location.href);
+        url.pathname = `/${relative.split('/').map(encodeURIComponent).join('/')}`;
+        if (url.href !== location.href) history.replaceState(null, '', url);
+      }
+
+      // Programme en cours → ?c= : un rechargement ou un favori le relance.
+      // Chaîne vide = retour au prompt, on retire le paramètre.
+      function setUrlCommand(commandLine) {
+        setUrlParams({ command: '', c: commandLine.trim(), t: commandLine ? undefined : '' });
+      }
+
+      // Titre de l'agent IA en cours → ?t=, à côté de sa commande dans ?c=
+      function setUrlOwnTitle(title) {
+        if (new URL(location.href).searchParams.has('c')) setUrlParams({ t: title });
+      }
+
+      // { nom: valeur } ; '' retire le paramètre, undefined n'y touche pas
+      function setUrlParams(changes) {
+        const url = new URL(location.href);
+        for (const [name, value] of Object.entries(changes)) {
+          if (value === undefined) continue;
+          if (value) url.searchParams.set(name, value);
+          else url.searchParams.delete(name);
+        }
+        if (url.href !== location.href) history.replaceState(null, '', url);
+      }
+
+      function startRename() {
+        const input = document.createElement('input');
+        input.id = 'title-input';
+        input.value = manualTitle;
+        input.placeholder = `${autoTitle} (vide = automatique)`;
+        titleEl.replaceWith(input);
+        input.focus();
+        input.select();
+
+        let done = false;
+        const finish = (commit) => {
+          if (done) return;
+          done = true;
+          if (commit) setManualTitle(input.value);
+          input.replaceWith(titleEl);
+          term.focus();
+        };
+        input.addEventListener('keydown', (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') finish(true);
+          if (e.key === 'Escape') finish(false);
+        });
+        input.addEventListener('blur', () => finish(true));
+      }
+
+      renderTitle();
+
+      // --- Séquences envoyées par le shell ----------------------------------
+      // - ESC ] 6767 ; title ; <nom> BEL : commande `title` (bin/title)
+      // - ESC ] 6767 ; command ; <ligne> BEL : commande lancée (shell-integration/zsh)
+      // - ESC ] 6767 ; resume ; <ligne> BEL : commande qui reprend la session de
+      //   l'agent IA en cours (shell-integration/zsh)
+      // - ESC ] 6767 ; prompt BEL : retour au prompt, la commande est terminée
+      // - ESC ] 7 ; file://<hôte><chemin> BEL : dossier courant, envoyé à chaque
+      //   prompt par shell-integration/zsh
+      // - ESC ] 9 ; <message> BEL (iTerm2), ESC ] 777 ; notify ; <titre> ; <message> BEL
+      //   (rxvt, Ghostty), ESC ] 99 ; … (kitty) : notification, voir Notifications
+      // On les retire du flux avant de l'envoyer au terminal.
+      const HANDLERS = {
+        '\x1b]6767;': (payload) => {
+          const [cmd, ...args] = payload.split(';');
+          if (cmd === 'title') setManualTitle(args.join(';'));
+          if (cmd === 'command') {
+            const commandLine = args.join(';');
+            const { program, args: programArgs } = parseCommand(commandLine);
+            const entry = PROGRAMS[program];
+            setUrlCommand(entry && entry.inUrl !== false ? commandLine : '');
+            runningProgram = entry && {
+              label: entry.title === 'ssh' ? sshLabel(programArgs) : program,
+              keepsOwnTitle: entry.title === 'own',
+              // Commande relancée depuis l'URL : on reprend son dernier titre
+              ownTitle: entry.title === 'own' && commandLine.trim() === restoredCommand.trim() ? restoredOwnTitle : '',
+              icon: entry.icon,
+            };
+            if (runningProgram?.ownTitle) setUrlOwnTitle(runningProgram.ownTitle);
+            renderTitle();
+          }
+          // Agent IA lancé avec un identifiant de session : sa commande de
+          // reprise (« claude --resume <id> ») remplace la ligne tapée
+          if (cmd === 'resume' && runningProgram) setUrlCommand(args.join(';'));
+          if (cmd === 'prompt') setUrlCommand('');
+          if (cmd === 'prompt' && runningProgram) {
+            runningProgram = null;
+            renderTitle();
+          }
+        },
+        // 9;4;… (barre de progression) et les autres sous-commandes ConEmu : ignorées
+        '\x1b]9;': (payload) => {
+          if (!/^\d+;/.test(payload)) notify('', payload);
+        },
+        '\x1b]777;': (payload) => {
+          const [cmd, title = '', ...body] = payload.split(';');
+          if (cmd === 'notify') notify(title, body.join(';'));
+        },
+        '\x1b]99;': kittyNotification,
+        '\x1b]7;': (payload) => {
+          let path = payload.replace(/^file:\/\/[^/]*/, '');
+          try {
+            path = decodeURIComponent(path);
+          } catch {
+            // chemin non encodé contenant un « % » : on le garde tel quel
+          }
+          const trimmed = path.replace(/\/+$/, '');
+          setAutoTitle(!trimmed || trimmed === home ? '~' : trimmed.split('/').pop());
+          // Sous ssh, le dossier signalé est celui de la machine distante
+          if (!runningProgram?.label.startsWith('ssh')) setUrlPath(trimmed);
+        },
+      };
+      let pending = '';
+
+      // Programmes reconnus tant qu'ils tournent (jusqu'au retour du prompt).
+      // title : ce que l'onglet affiche, devant les titres envoyés par le programme
+      //   - 'name' (par défaut) : le nom du programme
+      //   - 'own' : le titre envoyé par le programme s'il en envoie un (les agents
+      //             IA y résument la session), sinon son nom
+      //   - 'ssh' : « ssh <machine> »
+      // icon : favicon, slug simple-icons (logo servi par /icons/) ou emoji
+      // inUrl: false : ne pas garder la commande dans l'URL (?c=), elle contient
+      //   souvent un mot de passe (postgres://moi:secret@…)
+      const PROGRAMS = {
+        // Multiplexeurs et connexions
+        tmux: { icon: 'tmux' },
+        herdr: { icon: '🐑' },
+        zellij: { icon: '🪟' },
+        screen: { icon: '🖥️' },
+        ssh: { title: 'ssh', icon: '🔐' },
+        // Agents IA
+        claude: { title: 'own', icon: 'claude' },
+        opencode: { title: 'own', icon: 'opencode' },
+        codex: { title: 'own', icon: '🤖' },
+        aider: { title: 'own', icon: '🤖' },
+        pi: { title: 'own', icon: 'π' },
+        gemini: { title: 'own', icon: 'googlegemini' },
+        // Éditeurs
+        vim: { icon: 'vim' },
+        nvim: { icon: 'neovim' },
+        emacs: { icon: 'gnuemacs' },
+        nano: { icon: '📝' },
+        hx: { icon: 'helix' },
+        micro: { icon: '📝' },
+        // Git, conteneurs, fichiers
+        lazygit: { icon: 'git' },
+        tig: { icon: 'git' },
+        gitui: { icon: 'git' },
+        lazydocker: { icon: 'docker' },
+        k9s: { icon: 'kubernetes' },
+        yazi: { icon: '📁' },
+        ranger: { icon: '📁' },
+        gdu: { icon: '💾' },
+        ncdu: { icon: '💾' },
+        // Supervision
+        htop: { icon: 'htop' },
+        btop: { icon: '📊' },
+        top: { icon: '📊' },
+        // Bases de données et consoles
+        psql: { icon: 'postgresql', inUrl: false },
+        pgcli: { icon: 'postgresql', inUrl: false },
+        sqlite3: { icon: 'sqlite' },
+        python3: { icon: 'python' },
+        node: { icon: 'nodedotjs' },
+        // Documentation
+        man: { icon: '📖' },
+        bat: { icon: '🦇' },
+      };
+      const WRAPPERS = ['command', 'exec', 'nocorrect', 'noglob', 'time', 'sudo', 'env', 'nohup'];
+
+      // « FOO=1 command /opt/bin/tmux new -s x » → { program: 'tmux', args: ['new', '-s', 'x'] }
+      function parseCommand(commandLine) {
+        const words = commandLine.trim().split(/\s+/);
+        const index = words.findIndex((w) => !/^\w+=/.test(w) && !WRAPPERS.includes(w));
+        if (index === -1) return { program: '', args: [] };
+        return { program: words[index].split('/').pop(), args: words.slice(index + 1) };
+      }
+
+      // Options de ssh suivies d'une valeur (man ssh)
+      const SSH_OPTIONS_WITH_VALUE = 'BbcDEeFIiJLlmOoPpQRSWw';
+
+      // « ssh -p 22 -i clé moi@prod-1 uptime » → « ssh prod-1 »
+      function sshLabel(args) {
+        for (let i = 0; i < args.length; i++) {
+          const arg = args[i];
+          if (arg.startsWith('-') && arg.length > 1) {
+            // Options groupées (-tt, -vp22) : la première qui attend une valeur
+            // la prend dans la suite du mot, ou dans le mot suivant
+            for (let j = 1; j < arg.length; j++) {
+              if (SSH_OPTIONS_WITH_VALUE.includes(arg[j])) {
+                if (j === arg.length - 1) i++;
+                break;
+              }
+            }
+            continue;
+          }
+          const host = arg.replace(/^ssh:\/\//, '').replace(/^.*@/, '').replace(/:\d+$/, '');
+          return `ssh ${host}`;
+        }
+        return 'ssh';
+      }
+
+      // Prochaine séquence interceptée dans data, ou null
+      function findSequence(data) {
+        let found = null;
+        for (const prefix in HANDLERS) {
+          const start = data.indexOf(prefix);
+          if (start !== -1 && (!found || start < found.start)) found = { start, prefix };
+        }
+        return found;
+      }
+
+      function extractCommands(data) {
+        data = pending + data;
+        pending = '';
+        let out = '';
+        let seq;
+        while ((seq = findSequence(data))) {
+          out += data.slice(0, seq.start);
+          // Fin de séquence : BEL ou ESC \
+          const rest = data.slice(seq.start + seq.prefix.length);
+          const match = /\x07|\x1b\\/.exec(rest);
+          if (!match) {
+            // Séquence coupée entre deux messages : on attend la suite
+            pending = data.slice(seq.start);
+            return out;
+          }
+          HANDLERS[seq.prefix](rest.slice(0, match.index));
+          data = rest.slice(match.index + match[0].length);
+        }
+        return out + data;
+      }
+
+      // --- Terminal ----------------------------------------------------------
+      const config = await fetch('/config.json').then((r) => r.json());
+      home = config.home;
+      // 13 = taille par défaut de Ghostty sur macOS
+      const fontSize = config.fontSize ?? 13;
+      document.body.classList.toggle('thin', !config.fontThicken);
+
+      // Polices de la config Ghostty. Les fichiers trouvés sur le système sont
+      // servis par le serveur (Safari ignore les polices installées par
+      // l'utilisateur) sous un alias ; sinon on tente le nom tel quel.
+      const fontFamily = config.fonts
+        .map(({ family, faces }, i) => {
+          if (!faces.length) return `"${family}"`;
+          for (const face of faces) {
+            const src = `url(${face.url}) format("${face.format}")`;
+            const descriptors = { weight: String(face.weight), style: face.style };
+            document.fonts.add(new FontFace(`TermFont${i}`, src, descriptors));
+          }
+          return `TermFont${i}`;
+        })
+        .concat('Menlo', 'monospace')
+        .join(', ');
+
+      // Le terminal mesure la taille des cellules à l'ouverture : la police doit
+      // être chargée avant, sinon les mesures sont faites avec la police de secours.
+      const variants = ['', 'bold ', 'italic ', 'bold italic '];
+      await Promise.all([
+        init(),
+        ...variants.map((v) => document.fonts.load(`${v}${fontSize}px ${fontFamily}`)),
+      ]);
+
+      // Thème Ghostty (« light:…,dark:… » suit le mode clair/sombre du système)
+      const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = config.themes[dark ? 'dark' : 'light'];
+      const rootStyle = document.documentElement.style;
+      if (theme.background) rootStyle.setProperty('--bg', theme.background);
+      if (theme.foreground) rootStyle.setProperty('--fg', theme.foreground);
+      if (theme.blue) rootStyle.setProperty('--accent', theme.blue);
+      faviconColors = {
+        bg: theme.background ?? faviconColors.bg,
+        fg: theme.foreground ?? faviconColors.fg,
+        accent: theme.green ?? faviconColors.accent,
+        badge: theme.red ?? faviconColors.badge,
+      };
+      renderTitle();
+      if (config.paddingX !== undefined) rootStyle.setProperty('--pad-x', `${config.paddingX}px`);
+      if (config.paddingY !== undefined) rootStyle.setProperty('--pad-y', `${config.paddingY}px`);
+
+      const term = new Terminal({
+        fontSize,
+        fontFamily,
+        cursorBlink: true,
+        theme,
+      });
+
+      const fit = new FitAddon();
+      term.loadAddon(fit);
+      term.open(document.getElementById('terminal'));
+      fit.fit();
+      fit.observeResize();
+      term.focus();
+
+      titleEl.addEventListener('click', startRename);
+      term.onTitleChange((title) => {
+        // Les agents IA préfixent leur titre d'un symbole d'état (« ✳ », spinner
+        // braille « ⠂ »…) : le favicon le remplace, on le retire du nom de l'onglet.
+        if (runningProgram?.keepsOwnTitle) {
+          runningProgram.ownTitle = title.replace(/^[^\p{L}\p{N}\s]+\s+/u, '');
+          setUrlOwnTitle(runningProgram.ownTitle);
+        }
+        setAutoTitle(title);
+      });
+
+      // Ctrl+Shift+R (Cmd+Shift+R sur macOS) : renommer. Avec ghostty-web, renvoyer true bloque la touche.
+      term.attachCustomKeyEventHandler((e) => {
+        if ((isMac ? e.metaKey : e.ctrlKey) && e.shiftKey && e.code === 'KeyR') {
+          e.preventDefault(); // sinon Cmd+Shift+R recharge la page
+          startRename();
+          return true;
+        }
+        // ghostty-web avale Ctrl+V (raccourci « coller » hors macOS). Sur macOS, où
+        // coller est Cmd+V, on le transmet : Claude Code y lit le presse-papier, image comprise.
+        if (isMac && e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === 'KeyV') {
+          if (ws.readyState === WebSocket.OPEN) ws.send('\x16');
+          return true;
+        }
+        return false;
+      });
+
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const params = new URLSearchParams({ cols: term.cols, rows: term.rows, cwd: cwdPath });
+      // Commande de départ (?command= ou ?c=), saisie au premier prompt. Validée
+      // seulement si le serveur juge la navigation sûre (voir servePage).
+      const query = new URLSearchParams(location.search);
+      const startupCommand = query.get('command') ?? query.get('c');
+      if (startupCommand) {
+        params.set('command', startupCommand);
+        if (document.documentElement.dataset.launch === 'run') params.set('run', '1');
+      }
+      const ws = new WebSocket(`${proto}://${location.host}/pty?${params}`);
+
+      ws.onopen = () => {
+        statusEl.textContent = '';
+      };
+      ws.onmessage = (e) => {
+        const data = extractCommands(e.data);
+        // ghostty-web plante sur une écriture vide (message réduit à une commande)
+        if (data) term.write(data);
+      };
+      ws.onclose = () => {
+        statusEl.textContent = 'déconnecté — rechargez la page';
+        term.write('\r\n\x1b[2m[session terminée]\x1b[0m\r\n');
+      };
+
+      term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      });
+      // ghostty-web ne colle que du texte. Une image seule (capture d'écran) part au
+      // serveur, qui l'enregistre et colle son chemin : Claude Code l'attache alors.
+      document.getElementById('terminal').addEventListener('paste', (e) => {
+        const items = [...(e.clipboardData?.items ?? [])];
+        if (items.some((item) => item.type === 'text/plain')) return;
+        const image = items.find((item) => item.kind === 'file' && item.type.startsWith('image/'))?.getAsFile();
+        if (!image) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({
+            type: 'image',
+            mime: image.type,
+            data: reader.result.slice(reader.result.indexOf(',') + 1),
+            bracketed: term.hasBracketedPaste(),
+          }));
+        };
+        reader.readAsDataURL(image);
+      }, true);
+      term.onResize(({ cols, rows }) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+      });
+
+      // --- Souris --------------------------------------------------------------
+      // ghostty-web ne transmet pas la souris aux programmes : quand l'un d'eux
+      // l'active (vim mouse=a, htop, tmux…), on encode nous-mêmes clics, mouvements
+      // et molette. Shift maintenu garde la sélection de texte, comme dans Ghostty.
+      const container = document.getElementById('terminal');
+      const BUTTONS = { 0: 0, 1: 1, 2: 2 }; // gauche, milieu, droit
+      let pressedButton = null;
+      let lastMotion = {};
+
+      // Mode demandé par le programme : 9 = clics, 1000 = clics + relâchements,
+      // 1002 = + glisser, 1003 = tout mouvement
+      function trackingMode() {
+        for (const mode of [1003, 1002, 1000, 9]) if (term.getMode(mode)) return mode;
+        return 0;
+      }
+
+      function captures(e) {
+        return trackingMode() !== 0 && !e.shiftKey;
+      }
+
+      // Cellule (1-based) sous le pointeur, bornée à l'écran
+      function cellAt(e) {
+        const rect = container.querySelector('canvas').getBoundingClientRect();
+        const col = Math.floor(((e.clientX - rect.left) / rect.width) * term.cols) + 1;
+        const row = Math.floor(((e.clientY - rect.top) / rect.height) * term.rows) + 1;
+        return {
+          col: Math.min(Math.max(col, 1), term.cols),
+          row: Math.min(Math.max(row, 1), term.rows),
+        };
+      }
+
+      // button : 0-2 boutons, 3 = aucun, 64/65 = molette ; +32 pour un mouvement
+      function sendMouse(button, e, release = false) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        const code = button + (e.shiftKey ? 4 : 0) + (e.altKey ? 8 : 0) + (e.ctrlKey ? 16 : 0);
+        const { col, row } = cellAt(e);
+        if (term.getMode(1006)) {
+          ws.send(`\x1b[<${code};${col};${row}${release ? 'm' : 'M'}`);
+        } else if (col <= 223 && row <= 223) {
+          // Format historique : un octet par valeur, relâchement = bouton 3
+          const b = release ? 3 + (code & ~3) : code;
+          ws.send(`\x1b[M${String.fromCharCode(32 + b, 32 + col, 32 + row)}`);
+        }
+      }
+
+      // Phase de capture sur le conteneur : on passe avant les écouteurs du canvas
+      // (sélection, menu contextuel) et on les bloque quand la souris est capturée.
+      container.addEventListener(
+        'mousedown',
+        (e) => {
+          if (!captures(e) || !(e.button in BUTTONS)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          term.focus();
+          pressedButton = BUTTONS[e.button];
+          sendMouse(pressedButton, e);
+        },
+        true,
+      );
+
+      // Sur window : le relâchement compte même hors du terminal
+      window.addEventListener(
+        'mouseup',
+        (e) => {
+          if (pressedButton === null) return;
+          const mode = trackingMode();
+          if (mode && mode !== 9) sendMouse(pressedButton, e, true);
+          pressedButton = null;
+          e.stopPropagation();
+        },
+        true,
+      );
+
+      window.addEventListener(
+        'mousemove',
+        (e) => {
+          const mode = trackingMode();
+          const dragging = pressedButton !== null && (mode === 1002 || mode === 1003);
+          const hovering = mode === 1003 && container.contains(e.target);
+          if (!dragging && !hovering) return;
+          const { col, row } = cellAt(e);
+          // Un seul évènement par cellule
+          if (col === lastMotion.col && row === lastMotion.row) return;
+          lastMotion = { col, row };
+          sendMouse((pressedButton ?? 3) + 32, e);
+        },
+        true,
+      );
+
+      container.addEventListener(
+        'contextmenu',
+        (e) => {
+          if (captures(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        },
+        true,
+      );
+
+      // Molette : un évènement par ligne défilée (les trackpads envoient de
+      // petits deltas, on les accumule)
+      let wheelRemainder = 0;
+      term.attachCustomWheelEventHandler((e) => {
+        if (!captures(e)) return false;
+        const lineHeight = container.querySelector('canvas').getBoundingClientRect().height / term.rows;
+        const lines =
+          e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY
+          : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? e.deltaY * term.rows
+          : e.deltaY / lineHeight;
+        wheelRemainder += lines;
+        const steps = Math.trunc(wheelRemainder);
+        wheelRemainder -= steps;
+        for (let i = 0; i < Math.min(Math.abs(steps), 10); i++) sendMouse(steps < 0 ? 64 : 65, e);
+        return true;
+      });
+    </script>
+  </body>
+</html>

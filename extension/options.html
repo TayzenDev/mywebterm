@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>mywebterm — onglets groupés</title>
+  <style>
+    :root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
+    body { max-width: 34rem; margin: 1rem; }
+    label { display: block; margin: 0 0 1rem; }
+    label > span { display: block; font-weight: 600; margin-bottom: .3rem; }
+    small { display: block; opacity: .7; margin-top: .2rem; }
+    textarea, input[type=text], select { box-sizing: border-box; width: 100%; font: inherit; }
+    textarea { min-height: 6rem; font-family: ui-monospace, monospace; }
+    .check { display: flex; gap: .5rem; align-items: center; }
+    #status { margin-left: .5rem; opacity: .7; }
+    h2 { font-size: 1rem; margin: 1.5rem 0 .5rem; }
+    kbd { font-family: ui-monospace, monospace; padding: .1rem .3rem; border: 1px solid; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <form id="form">
+    <label>
+      <span>Adresses du terminal</span>
+      <textarea id="hosts" spellcheck="false"></textarea>
+      <small>Une par ligne, <code>hôte:port</code> comme dans l'URL (<code>term.localhost:8080</code>).
+        <code>*.localhost</code> accepte tous les sous-domaines.</small>
+    </label>
+    <label>
+      <span>Nom du groupe</span>
+      <input id="title" type="text">
+    </label>
+    <label>
+      <span>Couleur</span>
+      <select id="color">
+        <option value="grey">Gris</option>
+        <option value="blue">Bleu</option>
+        <option value="red">Rouge</option>
+        <option value="yellow">Jaune</option>
+        <option value="green">Vert</option>
+        <option value="pink">Rose</option>
+        <option value="purple">Violet</option>
+        <option value="cyan">Cyan</option>
+        <option value="orange">Orange</option>
+      </select>
+    </label>
+    <label class="check">
+      <input id="ungroupOnLeave" type="checkbox">
+      Sortir du groupe un onglet qui quitte le terminal
+    </label>
+    <h2>Ouvrir un terminal au clavier</h2>
+    <p>Raccourci : <kbd id="shortcut">…</kbd> <button type="button" id="editShortcut">Modifier</button></p>
+    <label>
+      <span>Adresse ouverte</span>
+      <input id="openUrl" type="text" spellcheck="false">
+    </label>
+    <label class="check">
+      <input id="inheritCwd" type="checkbox">
+      Depuis un terminal, ouvrir le nouveau dans le même dossier
+    </label>
+    <button type="submit">Enregistrer et regrouper</button><span id="status"></span>
+  </form>
+  <script src="defaults.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

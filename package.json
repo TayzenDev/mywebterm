@@ -1,0 +1,16 @@
+{
+  "name": "mywebterm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mon terminal local dans le navigateur, avec ghostty-web",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ghostty-web": "^0.4.0",
+    "node-pty": "^1.1.0",
+    "simple-icons": "^16.35.0",
+    "ws": "^8.18.0"
+  }
+}
