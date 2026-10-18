@@ -116,10 +116,10 @@ api.runtime.onMessage.addListener((msg) => {
   if (msg?.type === 'regroup') return regroupAll().then(() => true);
 });
 
-// Keyboard shortcut (configurable in the browser settings). The page keeps the
-// current directory in the URL path: from a terminal, reuse it, without the
-// title or the running command (?title=, ?c=).
-async function openTerminal() {
+// Keyboard shortcuts (configurable in the browser settings). The page keeps
+// the current directory in the URL path: from a terminal, reuse it, without
+// the title or the running command (?title=, ?c=).
+async function openTerminal(command) {
   const s = await api.storage.sync.get(DEFAULTS);
   const [active] = await api.tabs.query({ active: true, lastFocusedWindow: true });
   let url = s.openUrl;
@@ -127,9 +127,32 @@ async function openTerminal() {
     const u = new URL(active.url);
     url = u.origin + u.pathname;
   }
+  if (command) url = await commandUrl(url, command);
   await api.tabs.create({ url, windowId: active?.windowId });
 }
 
-api.commands.onCommand.addListener((command) => {
+// Adds the command (?c=) to the address, signed with the token when the
+// options have it (see "Signed commands" in public/index.html): without a
+// signature, the page asks before running it.
+async function commandUrl(url, command) {
+  const u = new URL(url);
+  u.searchParams.set('c', command);
+  const { token } = await api.storage.local.get({ token: '' });
+  if (token) u.searchParams.set('sig', await signCommand(token, u.pathname, command));
+  return u.href;
+}
+
+async function signCommand(token, path, command) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode(token), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(`mywebterm-command\n${path}\n${command}`));
+  return btoa(String.fromCharCode(...new Uint8Array(mac))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+api.commands.onCommand.addListener(async (command) => {
   if (command === 'open-terminal') openTerminal();
+  if (command === 'open-agent') {
+    const { agentCommand } = await api.storage.sync.get(DEFAULTS);
+    openTerminal(agentCommand);
+  }
 });

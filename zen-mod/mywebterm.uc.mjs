@@ -1,5 +1,6 @@
 // mywebterm for Zen: moves each terminal tab into the "Terminal" folder of its
-// space, closes those tabs in one step and opens a terminal from the keyboard.
+// space, closes those tabs in one step and opens a terminal or an AI agent
+// from the keyboard.
 // Sine loads this module in every browser window (see theme.json).
 
 const PREFS = {
@@ -15,6 +16,9 @@ const PREFS = {
   // From a terminal, the shortcut opens the new one in the same directory
   inheritCwd: ['mywebterm.inherit-cwd', true],
   shortcut: ['mywebterm.shortcut', 'Alt+Shift+T'],
+  // Opens a terminal that runs agentCommand
+  agentShortcut: ['mywebterm.agent-shortcut', 'Alt+Shift+A'],
+  agentCommand: ['mywebterm.agent-command', 'claude'],
 };
 
 function pref(key) {
@@ -123,13 +127,42 @@ const progressListener = {
   },
 };
 
-function openTerminal() {
+async function openTerminal(command) {
   let url = pref('openUrl');
   const current = gBrowser.selectedBrowser.currentURI;
   // The page keeps the current directory in the URL path; drop the title and
   // the running command (?title=, ?c=)
   if (pref('inheritCwd') && isTerminal(current)) url = current.prePath + current.filePath;
+  if (command) url = await commandUrl(url, command);
   openTrustedLinkIn(url, 'tab');
+}
+
+// Adds the command (?c=) to the address, signed with the server's token (see
+// "Signed commands" in public/index.html): without a signature, the page asks
+// before running it.
+async function commandUrl(url, command) {
+  const u = new URL(url);
+  u.searchParams.set('c', command);
+  const token = await readToken();
+  if (token) u.searchParams.set('sig', await signCommand(token, u.pathname, command));
+  return u.href;
+}
+
+// Read at each use: the server creates it again if it's deleted
+async function readToken() {
+  const configHome = Services.env.get('XDG_CONFIG_HOME') || PathUtils.join(Services.dirsvc.get('Home', Ci.nsIFile).path, '.config');
+  try {
+    return (await IOUtils.readUTF8(PathUtils.join(configHome, 'mywebterm', 'token'))).trim();
+  } catch {
+    return '';
+  }
+}
+
+async function signCommand(token, path, command) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', encoder.encode(token), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', key, encoder.encode(`mywebterm-command\n${path}\n${command}`));
+  return btoa(String.fromCharCode(...new Uint8Array(mac))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 // `Alt+Shift+T` → { code: 'KeyT', mods: Set { 'altKey', 'shiftKey' } }. Compare the
@@ -148,26 +181,36 @@ function parseShortcut(text) {
   return { code, mods: new Set(mods) };
 }
 
-let shortcut = null;
-function readShortcut() {
-  const text = pref('shortcut');
-  shortcut = parseShortcut(text);
-  if (!shortcut) console.warn(`[mywebterm] invalid shortcut: ${text}`);
+// [shortcut, action]…
+let shortcuts = [];
+function readShortcuts() {
+  shortcuts = [
+    ['shortcut', () => openTerminal()],
+    ['agentShortcut', () => openTerminal(pref('agentCommand'))],
+  ].flatMap(([key, action]) => {
+    const text = pref(key);
+    const shortcut = parseShortcut(text);
+    if (!shortcut) console.warn(`[mywebterm] invalid shortcut: ${text}`);
+    return shortcut ? [[shortcut, action]] : [];
+  });
 }
 
 function onKeyDown(event) {
-  if (!shortcut || event.code !== shortcut.code) return;
-  if (MODIFIER_KEYS.some((mod) => event[mod] !== shortcut.mods.has(mod))) return;
+  const match = shortcuts.find(
+    ([shortcut]) =>
+      event.code === shortcut.code && MODIFIER_KEYS.every((mod) => event[mod] === shortcut.mods.has(mod)),
+  );
+  if (!match) return;
   event.preventDefault();
   event.stopPropagation();
-  openTerminal();
+  match[1]().catch((err) => console.error('[mywebterm]', err));
 }
 
 // Prefs read on startup, then reread when they change
 const PREF_BRANCH = 'mywebterm.';
 function readPrefs() {
   readHosts();
-  readShortcut();
+  readShortcuts();
   // The folder name may have changed
   for (const tab of gZenWorkspaces.allStoredTabs) markTab(tab);
 }

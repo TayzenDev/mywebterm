@@ -12,4 +12,6 @@ const DEFAULTS = {
   openUrl: 'http://term.localhost/',
   // From a terminal, the shortcut opens the new one in the same directory
   inheritCwd: true,
+  // Command run by the AI agent shortcut
+  agentCommand: 'claude',
 };

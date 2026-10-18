@@ -27,7 +27,7 @@
   },
   {
     "type": "separator",
-    "label": "Open a terminal from the keyboard"
+    "label": "Open a terminal or an AI agent from the keyboard"
   },
   {
     "property": "mywebterm.shortcut",
@@ -48,5 +48,19 @@
     "label": "From a terminal, open the new one in the same directory",
     "type": "checkbox",
     "defaultValue": true
+  },
+  {
+    "property": "mywebterm.agent-shortcut",
+    "label": "AI agent shortcut: opens a terminal that runs the command below. Same syntax as the shortcut above.",
+    "type": "string",
+    "placeholder": "Alt+Shift+A",
+    "defaultValue": "Alt+Shift+A"
+  },
+  {
+    "property": "mywebterm.agent-command",
+    "label": "AI agent command (claude, codex…)",
+    "type": "string",
+    "placeholder": "claude",
+    "defaultValue": "claude"
   }
 ]

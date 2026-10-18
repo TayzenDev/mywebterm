@@ -29,10 +29,15 @@ missing:
 
 **Settings** (*Sine Mods* → mywebterm, or `about:config`, `mywebterm.` prefix): folder name,
 automatic folder creation, leaving the folder when the tab leaves the terminal, terminal
-addresses, shortcut, address to open and reuse of the current directory. The shortcut is one or
-more modifiers, then a letter or digit, joined with `+`: `Cmd`, `Ctrl`, `Alt` (Option on Mac),
-`Shift`, e.g. `Cmd+Shift+T` (default `Alt+Shift+T`). It takes precedence over Zen's own shortcut on
-the same keys. A tab you take out of the folder yourself isn't put back.
+addresses, shortcut, address to open, reuse of the current directory, AI agent shortcut and
+command. A shortcut is one or more modifiers, then a letter or digit, joined with `+`: `Cmd`,
+`Ctrl`, `Alt` (Option on Mac), `Shift`, e.g. `Cmd+Shift+T` (default `Alt+Shift+T`). It takes
+precedence over Zen's own shortcut on the same keys. A tab you take out of the folder yourself
+isn't put back.
+
+The AI agent shortcut (default `Alt+Shift+A`) opens a terminal like the other one, which runs the
+AI agent command (default `claude`). The mod signs that command with the server's token, read from
+`~/.config/mywebterm/token` (see [URLs](urls.md#run-a-command)), so it runs without asking.
 
 Zen pins the tabs in a folder, and normally unloads a pinned tab before it can be closed. The mod
 skips that step for tabs in the terminal folder: they show a close button, and the close button,

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "mywebterm",
-  "version": "0.4.0",
-  "description": "Groups mywebterm terminal tabs into a tab group and opens a terminal from the keyboard.",
+  "version": "0.5.0",
+  "description": "Groups mywebterm terminal tabs into a tab group and opens a terminal or an AI agent from the keyboard.",
   "permissions": [
     "tabs",
     "tabGroups",
@@ -24,6 +24,12 @@
         "default": "Alt+Shift+T"
       },
       "description": "Open a terminal"
+    },
+    "open-agent": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "Open an AI agent"
     }
   },
   "minimum_chrome_version": "102",

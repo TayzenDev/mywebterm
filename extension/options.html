@@ -48,7 +48,8 @@
       Ungroup a tab that leaves the terminal
     </label>
     <h2>Open a terminal from the keyboard</h2>
-    <p>Shortcut: <kbd id="shortcut">…</kbd> <button type="button" id="editShortcut">Change</button></p>
+    <p>Terminal: <kbd id="shortcut-open-terminal">…</kbd>, AI agent: <kbd id="shortcut-open-agent">…</kbd>
+      <button type="button" id="editShortcut">Change</button></p>
     <label>
       <span>Address to open</span>
       <input id="openUrl" type="text" spellcheck="false">
@@ -56,6 +57,17 @@
     <label class="check">
       <input id="inheritCwd" type="checkbox">
       From a terminal, open the new one in the same directory
+    </label>
+    <label>
+      <span>AI agent command</span>
+      <input id="agentCommand" type="text" spellcheck="false">
+      <small>Run by the AI agent shortcut, in a new terminal (<code>claude</code>, <code>codex</code>…).</small>
+    </label>
+    <label>
+      <span>Token</span>
+      <input id="token" type="password" spellcheck="false" autocomplete="off">
+      <small>Contents of <code>~/.config/mywebterm/token</code>. Optional: without it, the terminal asks
+        before running the agent command. Kept on this device only.</small>
     </label>
     <button type="submit">Save and regroup</button><span id="status"></span>
   </form>
