@@ -165,20 +165,20 @@ async function signCommand(token, path, command) {
   return btoa(String.fromCharCode(...new Uint8Array(mac))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// `Alt+Shift+T` → { code: 'KeyT', mods: Set { 'altKey', 'shiftKey' } }. Compare the
-// physical key (e.code): with Option on Mac, e.key is `ˇ`, not `T`.
+// `Alt+Shift+T` → { keyCode: 84, mods: Set { 'altKey', 'shiftKey' } }. Compare
+// e.keyCode, the key's letter or digit in the current layout: with Option on
+// Mac, e.key is `ˇ`, not `T`, and e.code is the physical key (`KeyQ` for the A
+// of an AZERTY keyboard).
 const MODIFIERS = { alt: 'altKey', option: 'altKey', shift: 'shiftKey', ctrl: 'ctrlKey', control: 'ctrlKey', cmd: 'metaKey', command: 'metaKey', meta: 'metaKey' };
 const MODIFIER_KEYS = ['altKey', 'shiftKey', 'ctrlKey', 'metaKey'];
 
 function parseShortcut(text) {
   const parts = text.split('+').map((p) => p.trim().toLowerCase());
   const key = parts.pop();
-  let code = null;
-  if (/^[a-z]$/.test(key)) code = `Key${key.toUpperCase()}`;
-  else if (/^[0-9]$/.test(key)) code = `Digit${key}`;
+  const keyCode = /^[a-z0-9]$/.test(key) ? key.toUpperCase().charCodeAt(0) : null;
   const mods = parts.map((p) => MODIFIERS[p]);
-  if (!code || !mods.length || mods.includes(undefined)) return null;
-  return { code, mods: new Set(mods) };
+  if (!keyCode || !mods.length || mods.includes(undefined)) return null;
+  return { keyCode, mods: new Set(mods) };
 }
 
 // [shortcut, action]…
@@ -198,7 +198,7 @@ function readShortcuts() {
 function onKeyDown(event) {
   const match = shortcuts.find(
     ([shortcut]) =>
-      event.code === shortcut.code && MODIFIER_KEYS.every((mod) => event[mod] === shortcut.mods.has(mod)),
+      event.keyCode === shortcut.keyCode && MODIFIER_KEYS.every((mod) => event[mod] === shortcut.mods.has(mod)),
   );
   if (!match) return;
   event.preventDefault();

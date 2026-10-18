@@ -4,7 +4,7 @@
   "description": "Moves mywebterm terminal tabs into the Terminal folder of each space, closes them in one step and opens a terminal or an AI agent from the keyboard.",
   "homepage": "https://github.com/TayzenDev/mywebterm/tree/main/zen-mod",
   "author": "TayzenDev",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "supportsUnload": true,
   "style": {
     "chrome": "chrome.css"
